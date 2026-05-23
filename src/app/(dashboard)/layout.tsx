@@ -12,6 +12,7 @@ import { CommandPalette } from "@/components/command-palette/command-palette"
 import { AiChatPanel } from "@/components/ai-assistant/ai-chat-panel"
 import { ToastProvider } from "@/components/ui/toast"
 import { WelcomeModal } from "@/components/onboarding/welcome-modal"
+import { I18nProvider } from "@/lib/i18n"
 
 interface SidebarContextValue {
   collapsed: boolean
@@ -110,6 +111,7 @@ export default function DashboardLayout({
   return (
     <ThemeProvider defaultTheme="system">
       <AuthGuard>
+        <I18nProvider>
         <SidebarProvider>
           <ToastProvider>
             <div className="flex h-screen overflow-hidden">
@@ -134,6 +136,7 @@ export default function DashboardLayout({
             <WelcomeModal />
           </ToastProvider>
         </SidebarProvider>
+        </I18nProvider>
       </AuthGuard>
     </ThemeProvider>
   )

@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   Activity,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
@@ -34,8 +35,10 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useSidebar } from "@/app/(dashboard)/layout"
+import { useI18n } from "@/lib/i18n"
 
 interface NavItem {
+  labelKey: string
   label: string
   href: string
   icon: React.ElementType
@@ -44,71 +47,23 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    roles: ["admin", "doctor", "receptionist", "accountant"],
-  },
-  {
-    label: "Patients",
-    href: "/patients",
-    icon: Users,
-    roles: ["admin", "receptionist"],
-  },
-  {
-    label: "Appointments",
-    href: "/appointments",
-    icon: Calendar,
-    roles: ["admin", "receptionist"],
-  },
-  {
-    label: "Visits",
-    href: "/visits",
-    icon: Stethoscope,
-    roles: ["admin", "doctor"],
-  },
-  {
-    label: "Prescriptions",
-    href: "/prescriptions",
-    icon: FileText,
-    roles: ["admin", "doctor"],
-  },
-  {
-    label: "Payments",
-    href: "/payments",
-    icon: CreditCard,
-    roles: ["admin", "accountant", "receptionist"],
-  },
-  {
-    label: "Inventory",
-    href: "/inventory",
-    icon: Package,
-    roles: ["admin"],
-  },
-  {
-    label: "Payroll",
-    href: "/payroll",
-    icon: Wallet,
-    roles: ["admin"],
-  },
-  {
-    label: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
-    roles: ["admin"],
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-    roles: ["admin"],
-  },
+  { labelKey: "nav.dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "doctor", "receptionist", "accountant"] },
+  { labelKey: "nav.patients", label: "Patients", href: "/patients", icon: Users, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.appointments", label: "Appointments", href: "/appointments", icon: Calendar, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.visits", label: "Visits", href: "/visits", icon: Stethoscope, roles: ["admin", "doctor"] },
+  { labelKey: "nav.prescriptions", label: "Prescriptions", href: "/prescriptions", icon: FileText, roles: ["admin", "doctor"] },
+  { labelKey: "nav.payments", label: "Payments", href: "/payments", icon: CreditCard, roles: ["admin", "accountant", "receptionist"] },
+  { labelKey: "nav.inventory", label: "Inventory", href: "/inventory", icon: Package, roles: ["admin"] },
+  { labelKey: "nav.payroll", label: "Payroll", href: "/payroll", icon: Wallet, roles: ["admin"] },
+  { labelKey: "nav.analytics", label: "Analytics", href: "/analytics", icon: BarChart3, roles: ["admin"] },
+  { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },
+  { labelKey: "nav.settings", label: "Settings", href: "/settings", icon: Settings, roles: ["admin"] },
 ]
 
 function SidebarContent({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname()
   const { user, logout } = useAuthStore()
+  const { t } = useI18n()
   const userRole = user?.role ?? "receptionist"
 
   const filteredItems = navItems.filter((item) =>
@@ -195,7 +150,7 @@ function SidebarContent({ collapsed = false }: { collapsed?: boolean }) {
                     />
                     {!collapsed && (
                       <>
-                        <span className="flex-1">{item.label}</span>
+                        <span className="flex-1">{t(item.labelKey)}</span>
                         {item.badge && (
                           <Badge
                             variant="secondary"
@@ -228,7 +183,7 @@ function SidebarContent({ collapsed = false }: { collapsed?: boolean }) {
                       {linkContent}
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={12}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </TooltipContent>
                   </Tooltip>
                 )

@@ -173,7 +173,7 @@ export default function VisitsPage() {
         <EmptyState onCreate={() => setFormOpen(true)} />
       ) : (
         <>
-          <div className="rounded-xl border-0 overflow-hidden ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
+          <div className="rounded-xl border-0 overflow-hidden overflow-x-auto ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
             <Table>
               <TableHeader>
                 <TableRow>

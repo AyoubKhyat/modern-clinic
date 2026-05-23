@@ -167,6 +167,19 @@ async function initDatabase() {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      entity TEXT NOT NULL,
+      entity_id INTEGER,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -345,6 +358,11 @@ function formatPayment(p) {
   return { id: p.id, patient: patient ? formatPatient(patient) : null, visit_id: p.visit_id, appointment_id: p.appointment_id, amount: p.amount, payment_type: p.payment_type, payment_method: p.payment_method, status: p.status, description: p.description, paid_at: p.paid_at, created_at: p.created_at };
 }
 
+function audit(req, action, entity, entityId, detail) {
+  runSql('INSERT INTO audit_log (user_id, user_name, action, entity, entity_id, detail) VALUES (?,?,?,?,?,?)',
+    [req.user?.id, req.user?.name, action, entity, entityId, detail]);
+}
+
 function notify(userId, title, message, type = 'info') {
   runSql('INSERT INTO notifications (user_id, title, message, type) VALUES (?,?,?,?)', [userId, title, message, type]);
 }
@@ -372,6 +390,8 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ message: 'Invalid credentials. Please try again.' });
   }
   const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h' });
+  runSql('INSERT INTO audit_log (user_id, user_name, action, entity, detail) VALUES (?,?,?,?,?)',
+    [user.id, user.name, 'login', 'auth', `Login from ${req.ip}`]);
   res.json({ token, user: formatUser(user) });
 });
 
@@ -404,6 +424,7 @@ app.post('/api/patients', authenticate, (req, res) => {
   const { first_name, last_name, date_of_birth, gender, phone, email, address, blood_type, allergies, emergency_contact_name, emergency_contact_phone, notes } = req.body;
   const id = runSql('INSERT INTO patients (first_name, last_name, date_of_birth, gender, phone, email, address, blood_type, allergies, emergency_contact_name, emergency_contact_phone, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     [first_name, last_name, date_of_birth, gender, phone, email, address, blood_type, allergies, emergency_contact_name, emergency_contact_phone, notes]);
+  audit(req, 'create', 'patient', id, `${first_name} ${last_name}`);
   res.status(201).json(formatPatient(getOne('SELECT * FROM patients WHERE id = ?', [id])));
 });
 
@@ -417,7 +438,9 @@ app.put('/api/patients/:id', authenticate, (req, res) => {
 });
 
 app.delete('/api/patients/:id', authenticate, (req, res) => {
+  const p = getOne('SELECT first_name, last_name FROM patients WHERE id = ?', [req.params.id]);
   runSql('DELETE FROM patients WHERE id = ?', [req.params.id]);
+  audit(req, 'delete', 'patient', Number(req.params.id), p ? `${p.first_name} ${p.last_name}` : '');
   res.json({ message: 'Deleted' });
 });
 
@@ -449,6 +472,7 @@ app.post('/api/appointments', authenticate, (req, res) => {
   const appt = getOne('SELECT * FROM appointments WHERE id = ?', [id]);
   const patient = getOne('SELECT first_name, last_name FROM patients WHERE id = ?', [patient_id]);
   if (patient) notifyAll('New Appointment', `${patient.first_name} ${patient.last_name} — ${type || 'consultation'}`, 'appointment');
+  audit(req, 'create', 'appointment', id, `${patient ? patient.first_name + ' ' + patient.last_name : ''} — ${type || 'consultation'}`);
   res.status(201).json(formatAppointment(appt));
 });
 
@@ -574,6 +598,7 @@ app.post('/api/payments', authenticate, (req, res) => {
     [patient_id, visit_id, appointment_id, amount, payment_type || 'consultation', payment_method || 'cash', status || 'pending', description]);
   const patient = getOne('SELECT first_name, last_name FROM patients WHERE id = ?', [patient_id]);
   if (patient) notifyAll('New Payment', `${patient.first_name} ${patient.last_name} — ${amount} MAD (${status || 'pending'})`, 'payment');
+  audit(req, 'create', 'payment', id, `${patient ? patient.first_name + ' ' + patient.last_name : ''} — ${amount} MAD`);
   res.status(201).json(formatPayment(getOne('SELECT * FROM payments WHERE id = ?', [id])));
 });
 
@@ -691,6 +716,121 @@ app.post('/api/ai/chat', authenticate, (req, res) => {
   const pendingPayments = countSql("SELECT COUNT(*) FROM payments WHERE status = 'pending'");
 
   res.json({ response: `I'm your clinic AI assistant. Here's a quick overview:\n\n- **${totalPatients}** registered patients\n- **${todayAppts}** appointments today\n- **${pendingPayments}** pending payments\n\nYou can ask me to:\n- Summarize a visit\n- Generate a SOAP note\n- Get a patient recap\n- Suggest next steps\n\nSelect a visit or patient context for detailed analysis.` });
+});
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+
+app.get('/api/analytics/revenue-trend', authenticate, (req, res) => {
+  const rows = getAll(`
+    SELECT strftime('%Y-%m', created_at) as month, COALESCE(SUM(amount), 0) as revenue
+    FROM payments WHERE status = 'paid'
+    GROUP BY month ORDER BY month DESC LIMIT 12
+  `);
+  res.json(rows.reverse());
+});
+
+app.get('/api/analytics/patient-growth', authenticate, (req, res) => {
+  const rows = getAll(`
+    SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+    FROM patients GROUP BY month ORDER BY month DESC LIMIT 12
+  `);
+  res.json(rows.reverse());
+});
+
+app.get('/api/analytics/appointment-trend', authenticate, (req, res) => {
+  const rows = getAll(`
+    SELECT strftime('%Y-%m', scheduled_at) as month, COUNT(*) as count
+    FROM appointments GROUP BY month ORDER BY month DESC LIMIT 12
+  `);
+  res.json(rows.reverse());
+});
+
+app.get('/api/appointments/range', authenticate, (req, res) => {
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ message: 'start and end required' });
+  const rows = getAll(
+    "SELECT * FROM appointments WHERE date(scheduled_at) >= ? AND date(scheduled_at) <= ? ORDER BY scheduled_at ASC",
+    [start, end]
+  );
+  res.json(rows.map(formatAppointment));
+});
+
+// ── Audit Log ──────────────────────────────────────────────────────────────
+
+app.get('/api/audit-log', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  res.json(paginate(
+    'SELECT * FROM audit_log ORDER BY created_at DESC',
+    'SELECT COUNT(*) FROM audit_log',
+    [], req, (row) => ({ ...row, user_name: row.user_name || 'System' })
+  ));
+});
+
+// ── Backup / Restore ───────────────────────────────────────────────────────
+
+app.get('/api/backup', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  saveDb();
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  runSql("INSERT INTO audit_log (user_id, user_name, action, entity, detail) VALUES (?,?,?,?,?)",
+    [req.user.id, req.user.name, 'backup', 'database', 'Database backup downloaded']);
+  res.setHeader('Content-Disposition', `attachment; filename=clinic-backup-${new Date().toISOString().slice(0,10)}.db`);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.send(buffer);
+});
+
+app.post('/api/restore', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  try {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+      const buffer = Buffer.concat(chunks);
+      const SQL = await initSqlJs();
+      const newDb = new SQL.Database(buffer);
+      newDb.exec("SELECT COUNT(*) FROM users");
+      db = newDb;
+      saveDb();
+      res.json({ message: 'Database restored successfully' });
+    });
+  } catch (err) {
+    res.status(400).json({ message: 'Invalid database file' });
+  }
+});
+
+// ── Export CSV ──────────────────────────────────────────────────────────────
+
+app.get('/api/export/:entity', authenticate, (req, res) => {
+  const { entity } = req.params;
+  let rows, headers;
+  switch (entity) {
+    case 'patients':
+      rows = getAll('SELECT id, first_name, last_name, date_of_birth, gender, phone, email, address, blood_type, allergies, created_at FROM patients ORDER BY id');
+      headers = ['ID', 'First Name', 'Last Name', 'Date of Birth', 'Gender', 'Phone', 'Email', 'Address', 'Blood Type', 'Allergies', 'Created At'];
+      break;
+    case 'appointments':
+      rows = getAll(`SELECT a.id, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name, a.scheduled_at, a.duration_minutes, a.status, a.type, a.reason FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id LEFT JOIN users u ON a.doctor_id = u.id ORDER BY a.id`);
+      headers = ['ID', 'Patient', 'Doctor', 'Scheduled At', 'Duration (min)', 'Status', 'Type', 'Reason'];
+      break;
+    case 'payments':
+      rows = getAll(`SELECT pay.id, p.first_name || ' ' || p.last_name as patient_name, pay.amount, pay.payment_type, pay.payment_method, pay.status, pay.description, pay.paid_at, pay.created_at FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id ORDER BY pay.id`);
+      headers = ['ID', 'Patient', 'Amount', 'Type', 'Method', 'Status', 'Description', 'Paid At', 'Created At'];
+      break;
+    default:
+      return res.status(400).json({ message: 'Invalid entity' });
+  }
+
+  const escape = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const csv = [headers.join(','), ...rows.map(r => Object.values(r).map(escape).join(','))].join('\n');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=${entity}-${new Date().toISOString().slice(0,10)}.csv`);
+  res.send(csv);
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────

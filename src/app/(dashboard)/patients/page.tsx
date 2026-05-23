@@ -13,8 +13,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Download,
 } from "lucide-react"
 import { patientsApi } from "@/lib/api"
+import { downloadCsv } from "@/lib/export-csv"
 import type { Patient, PaginatedResponse } from "@/types"
 import { PageHeader } from "@/components/layout/page-header"
 import { PatientForm } from "@/components/patients/patient-form"
@@ -123,10 +125,16 @@ export default function PatientsPage() {
         title="Patients"
         description="Manage your clinic's patients"
         action={
-          <Button onClick={openCreate}>
-            <Plus className="size-4" />
-            Add Patient
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => downloadCsv("patients").then(() => toast("CSV exported")).catch(() => toast("Export failed", "error"))}>
+              <Download className="size-4" />
+              Export
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              Add Patient
+            </Button>
+          </div>
         }
       />
 
@@ -146,7 +154,7 @@ export default function PatientsPage() {
         <EmptyState search={search} onCreate={openCreate} />
       ) : (
         <>
-          <div className="rounded-xl border-0 overflow-hidden ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
+          <div className="rounded-xl border-0 overflow-hidden overflow-x-auto ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
             <Table>
               <TableHeader>
                 <TableRow>

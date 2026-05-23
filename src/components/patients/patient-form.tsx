@@ -45,14 +45,29 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
+    setFieldErrors((prev) => ({ ...prev, [field]: "" }))
+  }
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {}
+    if (!form.first_name.trim()) errs.first_name = "First name is required"
+    if (!form.last_name.trim()) errs.last_name = "Last name is required"
+    if (!form.phone.trim()) errs.phone = "Phone number is required"
+    else if (!/^[+\d\s()-]{7,}$/.test(form.phone)) errs.phone = "Invalid phone format"
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Invalid email address"
+    if (form.emergency_contact_phone && !/^[+\d\s()-]{7,}$/.test(form.emergency_contact_phone)) errs.emergency_contact_phone = "Invalid phone format"
+    setFieldErrors(errs)
+    return Object.keys(errs).length === 0
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    if (!validate()) return
     setLoading(true)
 
     try {
@@ -91,9 +106,9 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
             id="first_name"
             value={form.first_name}
             onChange={(e) => update("first_name", e.target.value)}
-            required
-            className="h-9"
+            className={`h-9 ${fieldErrors.first_name ? "ring-2 ring-red-500/50" : ""}`}
           />
+          {fieldErrors.first_name && <span className="text-xs text-red-500">{fieldErrors.first_name}</span>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -102,9 +117,9 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
             id="last_name"
             value={form.last_name}
             onChange={(e) => update("last_name", e.target.value)}
-            required
-            className="h-9"
+            className={`h-9 ${fieldErrors.last_name ? "ring-2 ring-red-500/50" : ""}`}
           />
+          {fieldErrors.last_name && <span className="text-xs text-red-500">{fieldErrors.last_name}</span>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -113,9 +128,9 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
             id="phone"
             value={form.phone}
             onChange={(e) => update("phone", e.target.value)}
-            required
-            className="h-9"
+            className={`h-9 ${fieldErrors.phone ? "ring-2 ring-red-500/50" : ""}`}
           />
+          {fieldErrors.phone && <span className="text-xs text-red-500">{fieldErrors.phone}</span>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -125,8 +140,9 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
             type="email"
             value={form.email}
             onChange={(e) => update("email", e.target.value)}
-            className="h-9"
+            className={`h-9 ${fieldErrors.email ? "ring-2 ring-red-500/50" : ""}`}
           />
+          {fieldErrors.email && <span className="text-xs text-red-500">{fieldErrors.email}</span>}
         </div>
 
         <div className="flex flex-col gap-1.5">

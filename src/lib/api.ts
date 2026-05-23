@@ -93,3 +93,28 @@ export const notificationsApi = {
   markRead: (id: number) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
 };
+
+export const analyticsApi = {
+  revenueTrend: () => api.get('/analytics/revenue-trend'),
+  patientGrowth: () => api.get('/analytics/patient-growth'),
+  appointmentTrend: () => api.get('/analytics/appointment-trend'),
+};
+
+export const appointmentsRangeApi = {
+  range: (start: string, end: string) => api.get('/appointments/range', { params: { start, end } }),
+};
+
+export const auditLogApi = {
+  list: (params?: Record<string, any>) => api.get('/audit-log', { params }),
+};
+
+export const backupApi = {
+  download: () => api.get('/backup', { responseType: 'blob' }),
+  restore: (file: File) => api.post('/restore', file, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+  }),
+};
+
+export const exportApi = {
+  csv: (entity: string) => api.get(`/export/${entity}`, { responseType: 'blob' }),
+};
