@@ -341,7 +341,7 @@ function StatusDropdown({
       <SelectContent>
         {appointmentStatuses.map((s) => (
           <SelectItem key={s} value={s}>
-            <span className={`inline-block size-2 rounded-full ${statusColorMap[s]?.split(" ")[0] ?? "bg-gray-100"}`} />
+            <span className={`inline-block size-2 rounded-full ${statusColorMap[s]?.split(" ")[0] ?? "bg-muted-foreground/30"}`} />
             {appointmentStatusConfig[s]?.label ?? s}
           </SelectItem>
         ))}
