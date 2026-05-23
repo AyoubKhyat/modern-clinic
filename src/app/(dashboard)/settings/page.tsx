@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Sun,
@@ -13,12 +14,19 @@ import {
   Mail,
   Briefcase,
   Building2,
+  Database,
+  Download,
+  Upload,
+  Loader2,
 } from "lucide-react"
 import { useTheme } from "@/components/layout/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
+import { backupApi } from "@/lib/api"
+import { useI18n, localeLabels, type Locale } from "@/lib/i18n"
 import { useSidebar } from "@/app/(dashboard)/layout"
 import { useToast } from "@/components/ui/toast"
 import { PageHeader } from "@/components/layout/page-header"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -47,6 +55,7 @@ export default function SettingsPage() {
   const { user } = useAuthStore()
   const { collapsed, setCollapsed } = useSidebar()
   const { toast } = useToast()
+  const { locale, setLocale, t } = useI18n()
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,6 +75,12 @@ export default function SettingsPage() {
             <Info className="size-3.5" />
             About
           </TabsTrigger>
+          {user?.role === "admin" && (
+            <TabsTrigger value="data">
+              <Database className="size-3.5" />
+              Data
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="appearance" className="pt-4">
@@ -145,6 +160,36 @@ export default function SettingsPage() {
                       toast(checked ? "Sidebar collapsed" : "Sidebar expanded")
                     }}
                   />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className={GLASS}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">{t("settings.language")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3">
+                  {(["en", "fr", "ar"] as Locale[]).map((l) => {
+                    const isActive = locale === l
+                    return (
+                      <button
+                        key={l}
+                        onClick={() => {
+                          setLocale(l)
+                          toast(`Language set to ${localeLabels[l]}`)
+                        }}
+                        className={`flex flex-col items-center gap-1 rounded-xl p-4 ring-1 transition-all duration-200 ${
+                          isActive
+                            ? "bg-teal-500/[0.08] ring-2 ring-teal-500 shadow-sm"
+                            : "ring-foreground/[0.06] hover:bg-muted/30 hover:ring-foreground/10 dark:ring-foreground/[0.04]"
+                        }`}
+                      >
+                        <span className="text-lg">{l === "en" ? "🇬🇧" : l === "fr" ? "🇫🇷" : "🇲🇦"}</span>
+                        <span className="text-sm font-medium">{localeLabels[l]}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -273,8 +318,96 @@ export default function SettingsPage() {
             </Card>
           </motion.div>
         </TabsContent>
+        {user?.role === "admin" && (
+          <TabsContent value="data" className="pt-4">
+            <DataTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
+  )
+}
+
+function DataTab() {
+  const { toast } = useToast()
+  const [backingUp, setBackingUp] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function handleBackup() {
+    setBackingUp(true)
+    try {
+      const { data } = await backupApi.download()
+      const url = URL.createObjectURL(data)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `clinic-backup-${new Date().toISOString().slice(0, 10)}.db`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast("Backup downloaded")
+    } catch {
+      toast("Backup failed", "error")
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
+  async function handleRestore(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setRestoring(true)
+    try {
+      await backupApi.restore(file)
+      toast("Database restored successfully")
+      setTimeout(() => window.location.reload(), 1500)
+    } catch {
+      toast("Restore failed — invalid database file", "error")
+    } finally {
+      setRestoring(false)
+      if (fileRef.current) fileRef.current.value = ""
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex max-w-2xl flex-col gap-4"
+    >
+      <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Database Backup</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Download a complete backup of your clinic database. This includes all patients, appointments, visits, prescriptions, and payments.
+          </p>
+          <Button variant="outline" onClick={handleBackup} disabled={backingUp}>
+            {backingUp ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            {backingUp ? "Downloading..." : "Download Backup"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-sm ring-1 ring-red-500/10 dark:ring-red-500/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm text-red-600 dark:text-red-400">Restore Database</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Upload a previously downloaded backup file to restore your database. This will replace all current data.
+          </p>
+          <input ref={fileRef} type="file" accept=".db" onChange={handleRestore} className="hidden" />
+          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={restoring} className="border-red-500/20 text-red-600 hover:bg-red-500/5 dark:text-red-400">
+            {restoring ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {restoring ? "Restoring..." : "Upload & Restore"}
+          </Button>
+        </CardContent>
+      </Card>
+    </motion.div>
   )
 }
 
