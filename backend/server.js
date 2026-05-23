@@ -1441,7 +1441,7 @@ app.get('/api/lab-orders', authenticate, (req, res) => {
 app.post('/api/lab-orders', authenticate, (req, res) => {
   const { patient_id, doctor_id, visit_id, test_name, notes } = req.body;
   const id = runSql('INSERT INTO lab_orders (patient_id, doctor_id, visit_id, test_name, notes) VALUES (?,?,?,?,?)',
-    [patient_id, doctor_id || req.user.id, visit_id, test_name, notes]);
+    [patient_id, doctor_id || req.user.id, visit_id || null, test_name, notes || null]);
   audit(req, 'create', 'lab_order', id, test_name);
   res.status(201).json({ id, patient_id, test_name, status: 'ordered', created_at: new Date().toISOString() });
 });
@@ -1472,7 +1472,7 @@ app.get('/api/vaccinations', authenticate, (req, res) => {
 app.post('/api/vaccinations', authenticate, (req, res) => {
   const { patient_id, vaccine_name, dose_number, administered_at, next_dose_date, batch_number, notes } = req.body;
   const id = runSql('INSERT INTO vaccinations (patient_id, vaccine_name, dose_number, administered_at, next_dose_date, administered_by, batch_number, notes) VALUES (?,?,?,?,?,?,?,?)',
-    [patient_id, vaccine_name, dose_number || 1, administered_at || new Date().toISOString(), next_dose_date, req.user.id, batch_number, notes]);
+    [patient_id, vaccine_name, dose_number || 1, administered_at || new Date().toISOString(), next_dose_date || null, req.user.id, batch_number || null, notes || null]);
   audit(req, 'create', 'vaccination', id, `${vaccine_name} for patient #${patient_id}`);
   res.status(201).json({ id, patient_id, vaccine_name, dose_number, status: 'administered' });
 });
@@ -1496,7 +1496,7 @@ app.get('/api/referrals', authenticate, (req, res) => {
 app.post('/api/referrals', authenticate, (req, res) => {
   const { patient_id, referring_doctor_id, referred_to_doctor_id, reason, priority, notes } = req.body;
   const id = runSql('INSERT INTO referrals (patient_id, referring_doctor_id, referred_to_doctor_id, reason, priority, notes) VALUES (?,?,?,?,?,?)',
-    [patient_id, referring_doctor_id || req.user.id, referred_to_doctor_id, reason, priority || 'normal', notes]);
+    [patient_id, referring_doctor_id || req.user.id, referred_to_doctor_id || null, reason, priority || 'normal', notes || null]);
   audit(req, 'create', 'referral', id, `Referral for patient #${patient_id}`);
   res.status(201).json({ id, patient_id, reason, status: 'pending', priority });
 });
@@ -1530,7 +1530,7 @@ app.post('/api/expenses', authenticate, (req, res) => {
   if (!['admin', 'accountant'].includes(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
   const { category, description, amount, date, receipt_ref } = req.body;
   const id = runSql('INSERT INTO expenses (category, description, amount, date, receipt_ref, created_by) VALUES (?,?,?,?,?,?)',
-    [category, description, amount, date, receipt_ref, req.user.id]);
+    [category, description, amount, date, receipt_ref || null, req.user.id]);
   audit(req, 'create', 'expense', id, `${category}: ${amount} MAD`);
   res.status(201).json({ id, category, description, amount, date });
 });
@@ -1545,17 +1545,21 @@ app.delete('/api/expenses/:id', authenticate, (req, res) => {
 
 app.get('/api/leaves', authenticate, (req, res) => {
   const employeeId = req.query.employee_id;
+  const leaveType = req.query.leave_type;
+  const status = req.query.status;
   let where = [], params = [];
   if (employeeId) { where.push('l.employee_id = ?'); params.push(employeeId); }
+  if (leaveType) { where.push('l.type = ?'); params.push(leaveType); }
+  if (status) { where.push('l.status = ?'); params.push(status); }
   const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const rows = getAll(`SELECT l.*, u.name as employee_name, a.name as approved_by_name FROM leaves l JOIN users u ON l.employee_id = u.id LEFT JOIN users a ON l.approved_by = a.id ${w} ORDER BY l.start_date DESC`, params);
+  const rows = getAll(`SELECT l.*, l.type as leave_type, u.name as employee_name, a.name as approved_by_name FROM leaves l JOIN users u ON l.employee_id = u.id LEFT JOIN users a ON l.approved_by = a.id ${w} ORDER BY l.start_date DESC`, params);
   res.json(rows);
 });
 
 app.post('/api/leaves', authenticate, (req, res) => {
-  const { employee_id, type, start_date, end_date, reason } = req.body;
+  const { employee_id, type, leave_type, start_date, end_date, reason } = req.body;
   const id = runSql('INSERT INTO leaves (employee_id, type, start_date, end_date, reason) VALUES (?,?,?,?,?)',
-    [employee_id || req.user.id, type || 'annual', start_date, end_date, reason]);
+    [employee_id || req.user.id, type || leave_type || 'annual', start_date, end_date, reason || null]);
   res.status(201).json({ id, employee_id, type, start_date, end_date, status: 'pending' });
 });
 
