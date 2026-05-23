@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -37,6 +37,7 @@ export const authApi = {
 
 export const patientsApi = {
   list: (params?: Record<string, any>) => api.get('/patients', { params }),
+  search: (q: string) => api.get('/patients/search', { params: { q } }),
   get: (id: number) => api.get(`/patients/${id}`),
   create: (data: any) => api.post('/patients', data),
   update: (id: number, data: any) => api.put(`/patients/${id}`, data),
@@ -80,4 +81,15 @@ export const dashboardApi = {
   admin: () => api.get('/dashboard/admin'),
   doctor: () => api.get('/dashboard/doctor'),
   reception: () => api.get('/dashboard/reception'),
+};
+
+export const aiApi = {
+  chat: (message: string, context?: { visitId?: number; patientId?: number }) =>
+    api.post('/ai/chat', { message, context }),
+};
+
+export const notificationsApi = {
+  list: () => api.get('/notifications'),
+  markRead: (id: number) => api.patch(`/notifications/${id}/read`),
+  markAllRead: () => api.post('/notifications/read-all'),
 };

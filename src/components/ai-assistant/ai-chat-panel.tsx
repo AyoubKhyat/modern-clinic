@@ -9,17 +9,11 @@ import {
   ClipboardList,
   User,
   Lightbulb,
-  Loader2,
+  Send,
   ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { visitsApi, patientsApi } from "@/lib/api"
-import {
-  summarizeVisit,
-  generateSOAPNote,
-  draftPatientRecap,
-  suggestNextSteps,
-} from "@/lib/ai-templates"
+import { visitsApi, patientsApi, aiApi } from "@/lib/api"
 import type { Visit, Patient } from "@/types"
 
 interface Message {
@@ -45,13 +39,12 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
   const [contextItems, setContextItems] = useState<Array<{ id: number; label: string }>>([])
   const [selectedContextId, setSelectedContextId] = useState<number | null>(null)
   const [loadingContext, setLoadingContext] = useState(false)
+  const [freeInput, setFreeInput] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fullTextRef = useRef("")
 
   useEffect(() => {
-    if (initialTool && !open) {
-      setOpen(true)
-    }
+    if (initialTool && !open) setOpen(true)
   }, [initialTool, open])
 
   useEffect(() => {
@@ -64,21 +57,17 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
       if (type === "visit") {
         const res = await visitsApi.list({ per_page: 20 })
         const visits: Visit[] = res.data.data ?? res.data
-        setContextItems(
-          visits.map((v) => ({
-            id: v.id,
-            label: `#${v.id} — ${v.patient?.first_name ?? "?"} ${v.patient?.last_name ?? ""} (${v.status})`,
-          }))
-        )
+        setContextItems(visits.map((v) => ({
+          id: v.id,
+          label: `#${v.id} — ${v.patient?.first_name ?? "?"} ${v.patient?.last_name ?? ""} (${v.status})`,
+        })))
       } else {
         const res = await patientsApi.list({ per_page: 20 })
         const patients: Patient[] = res.data.data ?? res.data
-        setContextItems(
-          patients.map((p) => ({
-            id: p.id,
-            label: `${p.first_name} ${p.last_name}`,
-          }))
-        )
+        setContextItems(patients.map((p) => ({
+          id: p.id,
+          label: `${p.first_name} ${p.last_name}`,
+        })))
       }
     } catch {
       setContextItems([])
@@ -87,9 +76,7 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
   }, [])
 
   useEffect(() => {
-    if (open) {
-      fetchContextItems(contextType)
-    }
+    if (open) fetchContextItems(contextType)
   }, [open, contextType, fetchContextItems])
 
   const typeText = useCallback((text: string) => {
@@ -98,7 +85,7 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
     setDisplayedText("")
     let i = 0
     const interval = setInterval(() => {
-      i += 2
+      i += 3
       if (i >= text.length) {
         setDisplayedText(text)
         setIsTyping(false)
@@ -106,65 +93,53 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
       } else {
         setDisplayedText(text.slice(0, i))
       }
-    }, 15)
+    }, 12)
     return () => clearInterval(interval)
   }, [])
 
-  const runTool = useCallback(
-    async (toolId: ToolId) => {
-      if (!selectedContextId) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "⚠️ Please select a context item first (visit or patient) from the dropdown above." },
-        ])
-        return
+  const sendMessage = useCallback(async (message: string) => {
+    setMessages((prev) => [...prev, { role: "user", content: message }])
+    try {
+      const context: { visitId?: number; patientId?: number } = {}
+      if (selectedContextId) {
+        if (contextType === "visit") context.visitId = selectedContextId
+        else context.patientId = selectedContextId
       }
+      const { data } = await aiApi.chat(message, context)
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }])
+      typeText(data.response)
+    } catch {
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Failed to get a response. Make sure the backend is running.",
+      }])
+    }
+  }, [selectedContextId, contextType, typeText])
 
-      const toolLabel = TOOLS.find((t) => t.id === toolId)?.label ?? toolId
-      setMessages((prev) => [...prev, { role: "user", content: `Run: ${toolLabel}` }])
+  const runTool = useCallback((toolId: ToolId) => {
+    if (!selectedContextId) {
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Please select a context item first (visit or patient) from the dropdown above.",
+      }])
+      return
+    }
+    const toolLabel = TOOLS.find((t) => t.id === toolId)?.label ?? toolId
+    const messageMap: Record<ToolId, string> = {
+      summarize: "Summarize this visit",
+      soap: "Generate a SOAP note",
+      recap: "Give me a patient recap",
+      "next-steps": "Recommend next steps",
+    }
+    sendMessage(messageMap[toolId] || toolLabel)
+  }, [selectedContextId, sendMessage])
 
-      try {
-        let result: string
-
-        if (toolId === "recap") {
-          const patientRes = await patientsApi.get(selectedContextId)
-          const patient: Patient = patientRes.data.data ?? patientRes.data
-          const visitsRes = await visitsApi.list({ patient_id: selectedContextId, per_page: 10 })
-          const visits: Visit[] = visitsRes.data.data ?? visitsRes.data
-          result = draftPatientRecap(patient, visits)
-        } else {
-          const visitRes = await visitsApi.get(selectedContextId)
-          const visit: Visit = visitRes.data.data ?? visitRes.data
-
-          switch (toolId) {
-            case "summarize":
-              result = summarizeVisit(visit)
-              break
-            case "soap":
-              result = generateSOAPNote(visit)
-              break
-            case "next-steps":
-              result = suggestNextSteps(visit)
-              break
-            default:
-              result = "Unknown tool."
-          }
-        }
-
-        setMessages((prev) => [...prev, { role: "assistant", content: "" }])
-        typeText(result)
-      } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "❌ Failed to fetch data. Make sure the backend is running and the selected item exists.",
-          },
-        ])
-      }
-    },
-    [selectedContextId, typeText]
-  )
+  function handleFreeSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!freeInput.trim() || isTyping) return
+    sendMessage(freeInput.trim())
+    setFreeInput("")
+  }
 
   useEffect(() => {
     if (!isTyping && displayedText && messages.length > 0) {
@@ -180,7 +155,6 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
 
   return (
     <>
-      {/* Floating toggle button */}
       <motion.div
         className="fixed bottom-6 right-6 z-40"
         initial={{ scale: 0, opacity: 0 }}
@@ -194,23 +168,11 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
         >
           <AnimatePresence mode="wait">
             {open ? (
-              <motion.div
-                key="close"
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 90, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-              >
+              <motion.div key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}>
                 <X className="size-5 text-white" />
               </motion.div>
             ) : (
-              <motion.div
-                key="sparkle"
-                initial={{ rotate: 90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: -90, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-              >
+              <motion.div key="sparkle" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }} transition={{ duration: 0.15 }}>
                 <Sparkles className="size-5 text-white" />
               </motion.div>
             )}
@@ -224,39 +186,33 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
         </Button>
       </motion.div>
 
-      {/* Chat panel */}
       <AnimatePresence>
         {open && (
           <motion.div
-            className="fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-popover/80 shadow-2xl ring-1 ring-foreground/10 backdrop-blur-2xl sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[500px] sm:w-[400px] sm:max-w-[calc(100vw-3rem)] sm:rounded-2xl dark:bg-popover/90"
+            className="fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-popover/80 shadow-2xl ring-1 ring-foreground/10 backdrop-blur-2xl sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[520px] sm:w-[400px] sm:max-w-[calc(100vw-3rem)] sm:rounded-2xl dark:bg-popover/90"
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           >
-            {/* Header */}
             <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">
               <div className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500/20 to-blue-500/20">
                 <Sparkles className="size-3.5 text-teal-600 dark:text-teal-400" />
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-semibold">AI Assistant</h3>
-                <p className="text-[10px] text-muted-foreground/60">Smart templates • No LLM</p>
+                <p className="text-[10px] text-muted-foreground/60">Context-aware clinic assistant</p>
               </div>
               <Button variant="ghost" size="icon-xs" onClick={() => setOpen(false)}>
                 <X className="size-3.5" />
               </Button>
             </div>
 
-            {/* Context selector */}
             <div className="flex items-center gap-2 border-b border-border/30 px-4 py-2">
               <select
                 className="h-7 rounded-md border border-border/50 bg-muted/30 px-2 text-xs outline-none"
                 value={contextType}
-                onChange={(e) => {
-                  setContextType(e.target.value as "visit" | "patient")
-                  setSelectedContextId(null)
-                }}
+                onChange={(e) => { setContextType(e.target.value as "visit" | "patient"); setSelectedContextId(null) }}
               >
                 <option value="visit">Visit</option>
                 <option value="patient">Patient</option>
@@ -268,20 +224,15 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
                   onChange={(e) => setSelectedContextId(Number(e.target.value) || null)}
                   disabled={loadingContext}
                 >
-                  <option value="">
-                    {loadingContext ? "Loading..." : `Select ${contextType}...`}
-                  </option>
+                  <option value="">{loadingContext ? "Loading..." : `Select ${contextType}...`}</option>
                   {contextItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
+                    <option key={item.id} value={item.id}>{item.label}</option>
                   ))}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/40" />
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4">
               {messages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -289,37 +240,20 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
                     <Sparkles className="size-6 text-teal-500/60" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground/70">
-                      Smart Clinic Assistant
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground/50">
-                      Select a context above, then pick a tool below
-                    </p>
+                    <p className="text-sm font-medium text-foreground/70">Smart Clinic Assistant</p>
+                    <p className="mt-1 text-xs text-muted-foreground/50">Select a context above, then pick a tool or type a message</p>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {messages.map((msg, i) => {
                     const isLast = i === messages.length - 1
-                    const showTyping =
-                      isLast && msg.role === "assistant" && isTyping
-
+                    const showTyping = isLast && msg.role === "assistant" && isTyping
                     return (
-                      <div
-                        key={i}
-                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                      >
-                        <div
-                          className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
-                            msg.role === "user"
-                              ? "bg-teal-500/10 text-teal-800 dark:text-teal-200"
-                              : "bg-muted/50 text-foreground/80"
-                          }`}
-                        >
+                      <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${msg.role === "user" ? "bg-teal-500/10 text-teal-800 dark:text-teal-200" : "bg-muted/50 text-foreground/80"}`}>
                           {showTyping ? displayedText : msg.content}
-                          {showTyping && (
-                            <span className="ml-0.5 inline-block h-3.5 w-px animate-pulse bg-foreground/50" />
-                          )}
+                          {showTyping && <span className="ml-0.5 inline-block h-3.5 w-px animate-pulse bg-foreground/50" />}
                         </div>
                       </div>
                     )
@@ -329,21 +263,33 @@ export function AiChatPanel({ initialTool }: { initialTool?: string }) {
               )}
             </div>
 
-            {/* Tool buttons */}
-            <div className="border-t border-border/40 px-3 py-3">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="border-t border-border/40 px-3 py-2">
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
                 {TOOLS.map((tool) => (
                   <button
                     key={tool.id}
                     disabled={isTyping}
                     onClick={() => runTool(tool.id)}
-                    className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2 text-left text-xs transition-all hover:bg-muted/60 disabled:opacity-40"
+                    className="flex items-center gap-2 rounded-lg bg-muted/30 px-2.5 py-1.5 text-left text-[11px] transition-all hover:bg-muted/60 disabled:opacity-40"
                   >
-                    <tool.icon className={`size-3.5 shrink-0 ${tool.color}`} />
+                    <tool.icon className={`size-3 shrink-0 ${tool.color}`} />
                     <span className="truncate font-medium">{tool.label}</span>
                   </button>
                 ))}
               </div>
+              <form onSubmit={handleFreeSubmit} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ask about the selected context..."
+                  className="h-8 flex-1 rounded-lg border border-border/40 bg-muted/20 px-3 text-xs outline-none placeholder:text-muted-foreground/40 focus:border-teal-500/30"
+                  value={freeInput}
+                  onChange={(e) => setFreeInput(e.target.value)}
+                  disabled={isTyping}
+                />
+                <Button type="submit" size="icon-xs" disabled={isTyping || !freeInput.trim()} className="size-8 rounded-lg bg-teal-500 text-white hover:bg-teal-600">
+                  <Send className="size-3" />
+                </Button>
+              </form>
             </div>
           </motion.div>
         )}
