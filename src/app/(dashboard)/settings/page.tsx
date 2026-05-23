@@ -18,15 +18,18 @@ import {
   Download,
   Upload,
   Loader2,
+  Lock,
+  Wand2,
 } from "lucide-react"
 import { useTheme } from "@/components/layout/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
-import { backupApi } from "@/lib/api"
+import { backupApi, passwordApi, seedApi } from "@/lib/api"
 import { useI18n, localeLabels, type Locale } from "@/lib/i18n"
 import { useSidebar } from "@/app/(dashboard)/layout"
 import { useToast } from "@/components/ui/toast"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -201,7 +204,7 @@ export default function SettingsPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="max-w-2xl"
+            className="flex max-w-2xl flex-col gap-4"
           >
             <Card className={GLASS}>
               <CardContent className="flex flex-col gap-6 py-6">
@@ -267,6 +270,8 @@ export default function SettingsPage() {
                 </p>
               </CardContent>
             </Card>
+
+            <PasswordChangeForm />
           </motion.div>
         </TabsContent>
 
@@ -325,6 +330,94 @@ export default function SettingsPage() {
         )}
       </Tabs>
     </div>
+  )
+}
+
+function PasswordChangeForm() {
+  const { toast } = useToast()
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+
+    if (newPassword.length < 6) {
+      setError("New password must be at least 6 characters")
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    setLoading(true)
+    try {
+      await passwordApi.change(currentPassword, newPassword)
+      toast("Password changed successfully")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch {
+      toast("Failed to change password", "error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card className={GLASS}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Lock className="size-4" />
+          Change Password
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-sm">Current Password</Label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-sm">New Password</Label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-sm">Confirm New Password</Label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              required
+            />
+          </div>
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
+          <Button type="submit" disabled={loading} className="self-start">
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
+            {loading ? "Changing..." : "Change Password"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -407,7 +500,60 @@ function DataTab() {
           </Button>
         </CardContent>
       </Card>
+
+      <SeedDataCard />
     </motion.div>
+  )
+}
+
+function SeedDataCard() {
+  const { toast } = useToast()
+  const [count, setCount] = useState(20)
+  const [seeding, setSeeding] = useState(false)
+
+  async function handleSeed() {
+    setSeeding(true)
+    try {
+      const { data } = await seedApi.generate(count)
+      toast(data.message ?? `Generated ${count} demo records`)
+    } catch {
+      toast("Failed to generate demo data", "error")
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Wand2 className="size-4" />
+          Generate Demo Data
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
+          Populate the database with realistic demo patients, appointments, and visits for testing purposes.
+        </p>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-sm">Number of records</Label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={count}
+              onChange={(e) => setCount(Math.min(100, Math.max(1, Number(e.target.value))))}
+              className="w-28"
+            />
+          </div>
+        </div>
+        <Button variant="outline" onClick={handleSeed} disabled={seeding} className="self-start">
+          {seeding ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+          {seeding ? "Generating..." : "Generate"}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 

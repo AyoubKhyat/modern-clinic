@@ -12,8 +12,9 @@ import {
   ChevronRight,
   Stethoscope,
   Loader2,
+  FileText,
 } from "lucide-react"
-import { visitsApi, patientsApi } from "@/lib/api"
+import { visitsApi, patientsApi, visitTemplatesApi } from "@/lib/api"
 import type { Visit, Patient, PaginatedResponse } from "@/types"
 import {
   visitStatusConfig,
@@ -263,6 +264,21 @@ export default function VisitsPage() {
   )
 }
 
+interface VisitTemplate {
+  id: number
+  name: string
+  category: string
+  chief_complaint: string
+  diagnosis: string
+  notes: string
+  vitals_defaults: {
+    temperature?: number
+    blood_pressure?: string
+    heart_rate?: number
+    weight?: number
+  } | null
+}
+
 function VisitForm({
   onSuccess,
   onCancel,
@@ -275,6 +291,7 @@ function VisitForm({
     doctor_id: "",
     appointment_id: "",
     chief_complaint: "",
+    diagnosis: "",
     notes: "",
     temperature: "",
     blood_pressure: "",
@@ -282,6 +299,7 @@ function VisitForm({
     weight: "",
   })
 
+  const [templates, setTemplates] = useState<VisitTemplate[]>([])
   const [patientSearch, setPatientSearch] = useState("")
   const [patientResults, setPatientResults] = useState<Patient[]>([])
   const [showPatientDropdown, setShowPatientDropdown] = useState(false)
@@ -291,6 +309,18 @@ function VisitForm({
   const [error, setError] = useState("")
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    async function fetchTemplates() {
+      try {
+        const { data } = await visitTemplatesApi.list()
+        setTemplates(data.data ?? data ?? [])
+      } catch {
+        setTemplates([])
+      }
+    }
+    fetchTemplates()
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -337,6 +367,32 @@ function VisitForm({
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  function applyTemplate(templateId: string) {
+    const template = templates.find((t) => String(t.id) === templateId)
+    if (!template) return
+
+    setForm((prev) => ({
+      ...prev,
+      chief_complaint: template.chief_complaint || prev.chief_complaint,
+      diagnosis: template.diagnosis || prev.diagnosis,
+      notes: template.notes || prev.notes,
+      temperature: template.vitals_defaults?.temperature
+        ? String(template.vitals_defaults.temperature)
+        : prev.temperature,
+      blood_pressure: template.vitals_defaults?.blood_pressure || prev.blood_pressure,
+      heart_rate: template.vitals_defaults?.heart_rate
+        ? String(template.vitals_defaults.heart_rate)
+        : prev.heart_rate,
+      weight: template.vitals_defaults?.weight
+        ? String(template.vitals_defaults.weight)
+        : prev.weight,
+    }))
+
+    if (template.vitals_defaults) {
+      setVitalsOpen(true)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
@@ -358,6 +414,7 @@ function VisitForm({
         patient_id: Number(form.patient_id),
         doctor_id: Number(form.doctor_id),
         chief_complaint: form.chief_complaint || undefined,
+        diagnosis: form.diagnosis || undefined,
         notes: form.notes || undefined,
       }
       if (form.appointment_id) payload.appointment_id = Number(form.appointment_id)
@@ -382,6 +439,27 @@ function VisitForm({
       {error && (
         <div className="rounded-lg bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {templates.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label className="flex items-center gap-1.5">
+            <FileText className="size-4 text-muted-foreground" />
+            Template
+          </Label>
+          <Select onValueChange={(v) => v && typeof v === "string" && applyTemplate(v)}>
+            <SelectTrigger className="h-9 w-full">
+              <SelectValue placeholder="Apply template..." />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -455,6 +533,16 @@ function VisitForm({
           onChange={(e) => update("chief_complaint", e.target.value)}
           rows={3}
           placeholder="Describe the patient's main concern..."
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Diagnosis</Label>
+        <Textarea
+          value={form.diagnosis}
+          onChange={(e) => update("diagnosis", e.target.value)}
+          rows={2}
+          placeholder="Diagnosis..."
         />
       </div>
 

@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/components/ui/toast"
 import { visitsApi, prescriptionsApi } from "@/lib/api"
 import { printPrescription } from "@/lib/print-prescription"
+import { useI18n } from "@/lib/i18n"
 import type { Visit, Prescription, PrescriptionItem } from "@/types"
 import { visitStatusConfig, statusColorMap } from "@/lib/constants"
 import { AiPanel } from "@/components/ai-assistant/ai-panel"
@@ -525,6 +526,7 @@ export default function VisitDetailPage({
 }
 
 function PrescriptionCard({ prescription }: { prescription: Prescription }) {
+  const { locale } = useI18n()
   return (
     <div className="rounded-xl p-3 ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
       <div className="mb-2 flex items-center gap-2 text-sm">
@@ -534,7 +536,7 @@ function PrescriptionCard({ prescription }: { prescription: Prescription }) {
         <Badge variant={prescription.is_active ? "default" : "outline"} className="text-xs">
           {prescription.is_active ? "Active" : "Inactive"}
         </Badge>
-        <Button variant="ghost" size="icon-xs" onClick={() => printPrescription(prescription)} className="ml-auto">
+        <Button variant="ghost" size="icon-xs" onClick={() => printPrescription(prescription, undefined, locale)} className="ml-auto">
           <Printer className="size-3.5" />
         </Button>
       </div>

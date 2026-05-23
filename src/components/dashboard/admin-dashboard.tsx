@@ -13,6 +13,9 @@ import {
   CalendarPlus,
   CreditCard,
   BarChart3,
+  Settings2,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import {
   AreaChart,
@@ -29,6 +32,15 @@ import {
   Cell,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { dashboardApi, analyticsApi } from "@/lib/api"
@@ -128,13 +140,42 @@ function DashboardSkeleton() {
   )
 }
 
+const WIDGET_KEYS = ['stats', 'charts', 'trends', 'activity', 'payments'] as const
+type WidgetKey = typeof WIDGET_KEYS[number]
+const WIDGET_LABELS: Record<WidgetKey, string> = {
+  stats: 'Stat Cards',
+  charts: 'Appointment Charts',
+  trends: 'Revenue & Appointment Trends',
+  activity: 'Recent Activity & Quick Actions',
+  payments: 'Recent Payments',
+}
+
+function getVisibleWidgets(): Record<WidgetKey, boolean> {
+  if (typeof window === 'undefined') return Object.fromEntries(WIDGET_KEYS.map(k => [k, true])) as Record<WidgetKey, boolean>
+  try {
+    const saved = localStorage.getItem('dashboard_widgets')
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return Object.fromEntries(WIDGET_KEYS.map(k => [k, true])) as Record<WidgetKey, boolean>
+}
+
 export function AdminDashboardView() {
   const [data, setData] = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [revenueTrend, setRevenueTrend] = useState<{month: string; revenue: number}[]>([])
   const [appointmentTrend, setAppointmentTrend] = useState<{month: string; count: number}[]>([])
+  const [widgets, setWidgets] = useState<Record<WidgetKey, boolean>>(getVisibleWidgets)
+  const [customizeOpen, setCustomizeOpen] = useState(false)
   const { user } = useAuthStore()
+
+  function toggleWidget(key: WidgetKey) {
+    setWidgets(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      localStorage.setItem('dashboard_widgets', JSON.stringify(next))
+      return next
+    })
+  }
 
   useEffect(() => {
     dashboardApi
@@ -194,25 +235,30 @@ export function AdminDashboardView() {
         variants={itemVariants}
         className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-500/10 via-blue-500/10 to-indigo-500/10 p-6 dark:from-teal-500/[0.07] dark:via-blue-500/[0.07] dark:to-indigo-500/[0.07]"
       >
-        <div className="relative z-10">
-          <p className="text-sm font-medium text-muted-foreground">
-            {getGreeting()},
-          </p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight">
-            {user?.name ?? "Admin"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {format(new Date(), "EEEE, MMMM d, yyyy")} &mdash;{" "}
-            {data.today_patients} patients today,{" "}
-            {data.recent_payments.filter((p) => p.status === "pending").length}{" "}
-            pending payments
-          </p>
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">
+              {getGreeting()},
+            </p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight">
+              {user?.name ?? "Admin"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {format(new Date(), "EEEE, MMMM d, yyyy")} &mdash;{" "}
+              {data.today_patients} patients today,{" "}
+              {data.recent_payments.filter((p) => p.status === "pending").length}{" "}
+              pending payments
+            </p>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={() => setCustomizeOpen(true)} className="text-muted-foreground hover:text-foreground">
+            <Settings2 className="size-4" />
+          </Button>
         </div>
         <div className="absolute -right-8 -top-8 size-48 rounded-full bg-gradient-to-br from-teal-400/20 to-blue-500/20 blur-3xl" />
       </motion.div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {widgets.stats && <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCardConfig.map(({ key, label, icon: Icon, gradient, ring, iconBg, darkGradient }) => (
           <motion.div key={key} variants={itemVariants}>
             <Card
@@ -237,10 +283,10 @@ export function AdminDashboardView() {
             </Card>
           </motion.div>
         ))}
-      </div>
+      </div>}
 
       {/* Charts + Timeline Row */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {widgets.charts && <div className="grid gap-4 lg:grid-cols-3">
         {/* Area Chart */}
         <motion.div variants={itemVariants} className="lg:col-span-2">
           <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
@@ -349,10 +395,10 @@ export function AdminDashboardView() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </div>}
 
       {/* Revenue & Appointment Trends */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      {widgets.trends && <div className="grid gap-4 lg:grid-cols-2">
         <motion.div variants={itemVariants}>
           <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
             <CardHeader>
@@ -404,10 +450,10 @@ export function AdminDashboardView() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </div>}
 
       {/* Activity Timeline + Quick Actions */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {widgets.activity && <div className="grid gap-4 lg:grid-cols-3">
         {/* Activity Timeline */}
         <motion.div variants={itemVariants} className="lg:col-span-2">
           <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
@@ -482,10 +528,10 @@ export function AdminDashboardView() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </div>}
 
       {/* Recent Payments */}
-      <motion.div variants={itemVariants}>
+      {widgets.payments && <motion.div variants={itemVariants}>
         <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
           <CardHeader>
             <CardTitle>Recent Payments</CardTitle>
@@ -537,7 +583,23 @@ export function AdminDashboardView() {
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </motion.div>}
+
+      <Dialog open={customizeOpen} onOpenChange={setCustomizeOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Customize Dashboard</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            {WIDGET_KEYS.map((key) => (
+              <div key={key} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2.5">
+                <Label className="text-sm">{WIDGET_LABELS[key]}</Label>
+                <Switch checked={widgets[key]} onCheckedChange={() => toggleWidget(key)} />
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }

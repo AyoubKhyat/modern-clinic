@@ -16,9 +16,10 @@ import {
   Loader2,
   FileText,
 } from "lucide-react"
-import { prescriptionsApi, patientsApi } from "@/lib/api"
+import { prescriptionsApi, patientsApi, medicationsApi } from "@/lib/api"
 import { printPrescription } from "@/lib/print-prescription"
 import { useAuthStore } from "@/stores/auth-store"
+import { useI18n } from "@/lib/i18n"
 import type { Prescription, PrescriptionItem, Patient, PaginatedResponse } from "@/types"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -70,6 +71,7 @@ const DOCTORS = [
 export default function PrescriptionsPage() {
   const { toast } = useToast()
   const { user } = useAuthStore()
+  const { locale } = useI18n()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [meta, setMeta] = useState<PaginatedResponse<Prescription>["meta"] | null>(null)
   const [page, setPage] = useState(1)
@@ -239,7 +241,7 @@ export default function PrescriptionsPage() {
                       <Edit className="size-3.5" />
                       Edit
                     </Button>
-                    <Button variant="ghost" size="icon-sm" className="ml-auto" onClick={() => printPrescription(prescription, user?.employee?.clinic?.name)}>
+                    <Button variant="ghost" size="icon-sm" className="ml-auto" onClick={() => printPrescription(prescription, user?.employee?.clinic?.name, locale)}>
                       <Printer className="size-3.5" />
                     </Button>
                   </CardFooter>
@@ -397,10 +399,19 @@ function PrescriptionForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const [medSuggestions, setMedSuggestions] = useState<string[]>([])
+  const [activeMedIndex, setActiveMedIndex] = useState<number | null>(null)
+  const medDropdownRef = useRef<HTMLDivElement>(null)
+  const medSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (patientDropdownRef.current && !patientDropdownRef.current.contains(e.target as Node)) {
         setShowPatientDropdown(false)
+      }
+      if (medDropdownRef.current && !medDropdownRef.current.contains(e.target as Node)) {
+        setActiveMedIndex(null)
+        setMedSuggestions([])
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -435,6 +446,34 @@ function PrescriptionForm({
     setPatientSearch(patient.full_name)
     setShowPatientDropdown(false)
     setPatientResults([])
+  }
+
+  function handleMedicationSearch(query: string, index: number) {
+    updateItem(index, "medication_name", query)
+
+    if (medSearchTimeoutRef.current) clearTimeout(medSearchTimeoutRef.current)
+
+    if (query.trim().length < 2) {
+      setMedSuggestions([])
+      setActiveMedIndex(null)
+      return
+    }
+
+    setActiveMedIndex(index)
+    medSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const { data } = await medicationsApi.search(query)
+        setMedSuggestions(data ?? [])
+      } catch {
+        setMedSuggestions([])
+      }
+    }, 300)
+  }
+
+  function selectMedication(name: string, index: number) {
+    updateItem(index, "medication_name", name)
+    setMedSuggestions([])
+    setActiveMedIndex(null)
   }
 
   function addItem() {
@@ -611,14 +650,37 @@ function PrescriptionForm({
               </Button>
             )}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="col-span-2 flex flex-col gap-1">
+              <div
+                className="relative col-span-2 flex flex-col gap-1"
+                ref={activeMedIndex === index ? medDropdownRef : undefined}
+              >
                 <Label className="text-xs">Medication Name *</Label>
                 <Input
                   placeholder="e.g. Amoxicillin"
                   value={item.medication_name}
-                  onChange={(e) => updateItem(index, "medication_name", e.target.value)}
+                  onChange={(e) => handleMedicationSearch(e.target.value, index)}
+                  onFocus={() => {
+                    if (item.medication_name.trim().length >= 2 && medSuggestions.length > 0) {
+                      setActiveMedIndex(index)
+                    }
+                  }}
                   className="h-8 text-sm"
+                  autoComplete="off"
                 />
+                {activeMedIndex === index && medSuggestions.length > 0 && (
+                  <div className="absolute top-[calc(100%+2px)] left-0 z-50 w-full rounded-lg border bg-popover shadow-md">
+                    {medSuggestions.slice(0, 8).map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-muted"
+                        onClick={() => selectMedication(name, index)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Dosage</Label>

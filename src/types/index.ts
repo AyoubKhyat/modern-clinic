@@ -53,6 +53,9 @@ export interface Patient {
   allergies?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
+  insurance_provider?: string;
+  insurance_number?: string;
+  insurance_type?: string;
   notes?: string;
   appointments_count?: number;
   visits_count?: number;

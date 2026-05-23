@@ -16,8 +16,13 @@ import {
   List,
   Loader2,
   Download,
+  Mail,
+  AlertTriangle,
+  QrCode,
+  Copy,
+  Check,
 } from "lucide-react"
-import { appointmentsApi, appointmentsRangeApi, patientsApi } from "@/lib/api"
+import { appointmentsApi, appointmentsRangeApi, patientsApi, conflictApi, remindApi, qrApi } from "@/lib/api"
 import { downloadCsv } from "@/lib/export-csv"
 import { WeekCalendar } from "@/components/appointments/week-calendar"
 import type { Appointment, Patient, PaginatedResponse } from "@/types"
@@ -74,6 +79,8 @@ interface AppointmentFormData {
   type: string
   reason: string
   notes: string
+  recurrence: string
+  recurrence_count: string
 }
 
 const emptyForm: AppointmentFormData = {
@@ -84,6 +91,8 @@ const emptyForm: AppointmentFormData = {
   type: "Consultation",
   reason: "",
   notes: "",
+  recurrence: "none",
+  recurrence_count: "4",
 }
 
 export default function AppointmentsPage() {
@@ -106,6 +115,10 @@ export default function AppointmentsPage() {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null)
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrToken, setQrToken] = useState("")
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrCopied, setQrCopied] = useState(false)
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
@@ -175,6 +188,35 @@ export default function AppointmentsPage() {
     setEditingAppointment(null)
     fetchAppointments()
   }
+
+  async function handleQrCode(appointmentId: number) {
+    setQrLoading(true)
+    setQrCopied(false)
+    try {
+      const { data } = await qrApi.getToken(appointmentId)
+      const token = data.token ?? data.url ?? ""
+      setQrToken(token)
+      setQrOpen(true)
+    } catch {
+      toast("Failed to generate check-in link", "error")
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  function copyQrLink() {
+    const url = qrCheckinUrl
+    navigator.clipboard.writeText(url).then(() => {
+      setQrCopied(true)
+      toast("Check-in link copied")
+      setTimeout(() => setQrCopied(false), 2000)
+    }).catch(() => {
+      toast("Failed to copy link", "error")
+    })
+  }
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+  const qrCheckinUrl = qrToken ? `${baseUrl}/checkin?token=${qrToken}` : ""
 
   return (
     <div className="flex flex-col gap-6">
@@ -342,6 +384,30 @@ export default function AppointmentsPage() {
                         >
                           <Edit className="size-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Send Reminder"
+                          onClick={async () => {
+                            try {
+                              await remindApi.send(apt.id)
+                              toast("Reminder email sent")
+                            } catch {
+                              toast("Failed to send reminder", "error")
+                            }
+                          }}
+                        >
+                          <Mail className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="QR Check-in"
+                          onClick={() => handleQrCode(apt.id)}
+                          disabled={qrLoading}
+                        >
+                          <QrCode className="size-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </motion.tr>
@@ -384,6 +450,45 @@ export default function AppointmentsPage() {
           {viewingAppointment && (
             <AppointmentDetail appointment={viewingAppointment} />
           )}
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>QR Check-in</DialogTitle>
+            <DialogDescription>
+              Share this link with the patient for self check-in.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="flex size-32 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500/10 to-blue-500/10 ring-1 ring-foreground/5">
+              <QrCode className="size-16 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="w-full rounded-lg bg-muted/50 p-3">
+              <p className="break-all text-center text-xs text-muted-foreground font-mono">
+                {qrCheckinUrl}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={copyQrLink}
+            >
+              {qrCopied ? (
+                <>
+                  <Check className="size-4 text-green-500" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="size-4" />
+                  Copy Link
+                </>
+              )}
+            </Button>
+          </div>
           <DialogFooter showCloseButton />
         </DialogContent>
       </Dialog>
@@ -497,6 +602,8 @@ function AppointmentForm({
         type: appointment.type ?? "Consultation",
         reason: appointment.reason ?? "",
         notes: appointment.notes ?? "",
+        recurrence: "none",
+        recurrence_count: "4",
       }
     }
     return { ...emptyForm }
@@ -510,7 +617,45 @@ function AppointmentForm({
   const [error, setError] = useState("")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null)
+  const conflictTimeout = useRef<ReturnType<typeof setTimeout>>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
+
+  // Conflict detection: debounce check when doctor, datetime, or duration change
+  useEffect(() => {
+    setConflictWarning(null)
+    if (!form.doctor_id || !form.scheduled_at || !form.duration_minutes) return
+
+    if (conflictTimeout.current) clearTimeout(conflictTimeout.current)
+
+    conflictTimeout.current = setTimeout(async () => {
+      try {
+        const params: Record<string, any> = {
+          doctor_id: form.doctor_id,
+          scheduled_at: form.scheduled_at,
+          duration_minutes: form.duration_minutes,
+        }
+        if (isEdit && appointment) {
+          params.exclude_id = appointment.id
+        }
+        const { data } = await conflictApi.check(params)
+        if (data.conflict) {
+          const count = data.conflicts?.length ?? 0
+          setConflictWarning(
+            `Scheduling conflict detected: ${count} overlapping appointment${count !== 1 ? "s" : ""} found for this doctor at the selected time.`
+          )
+        } else {
+          setConflictWarning(null)
+        }
+      } catch {
+        // Silently ignore conflict check errors
+      }
+    }, 500)
+
+    return () => {
+      if (conflictTimeout.current) clearTimeout(conflictTimeout.current)
+    }
+  }, [form.doctor_id, form.scheduled_at, form.duration_minutes])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -570,7 +715,7 @@ function AppointmentForm({
 
     setLoading(true)
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         patient_id: Number(form.patient_id),
         doctor_id: Number(form.doctor_id),
         scheduled_at: form.scheduled_at,
@@ -578,6 +723,11 @@ function AppointmentForm({
         type: form.type,
         reason: form.reason || undefined,
         notes: form.notes || undefined,
+      }
+
+      if (!isEdit && form.recurrence !== "none") {
+        payload.recurrence = form.recurrence
+        payload.recurrence_count = Number(form.recurrence_count)
       }
 
       if (isEdit) {
@@ -603,6 +753,13 @@ function AppointmentForm({
       {error && (
         <div className="rounded-lg bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {conflictWarning && (
+        <div className="flex items-start gap-2 rounded-lg bg-yellow-500/10 px-3 py-2.5 text-sm text-yellow-700 dark:text-yellow-400">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{conflictWarning}</span>
         </div>
       )}
 
@@ -705,6 +862,49 @@ function AppointmentForm({
             </SelectContent>
           </Select>
         </div>
+
+        {!isEdit && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label>Recurrence</Label>
+              <Select
+                value={form.recurrence}
+                onValueChange={(v) => update("recurrence", v ?? "none")}
+              >
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="No recurrence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {form.recurrence !== "none" && (
+              <div className="flex flex-col gap-1.5">
+                <Label>Occurrences</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={12}
+                  value={form.recurrence_count}
+                  onChange={(e) => {
+                    const val = Math.min(12, Math.max(1, Number(e.target.value) || 1))
+                    update("recurrence_count", String(val))
+                  }}
+                  className="h-9"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Total appointments to create (max 12)
+                </span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">

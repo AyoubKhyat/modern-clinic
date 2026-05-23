@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, use } from "react"
+import { useState, useEffect, useCallback, useRef, use } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -18,8 +18,16 @@ import {
   Stethoscope,
   CreditCard,
   Clock,
+  FileUp,
+  File,
+  Trash2,
+  Shield,
+  FlaskConical,
+  Syringe,
+  ArrowRightLeft,
+  Plus,
 } from "lucide-react"
-import { patientsApi, appointmentsApi, visitsApi, paymentsApi } from "@/lib/api"
+import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, documentsApi, labOrdersApi, vaccinationsApi, referralsApi } from "@/lib/api"
 import type { Patient, Appointment, Visit, Payment } from "@/types"
 import { PatientForm } from "@/components/patients/patient-form"
 import { Button } from "@/components/ui/button"
@@ -34,7 +42,22 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
+
+const DOCTORS = [
+  { value: "2", label: "Dr. Amina Tazi" },
+  { value: "3", label: "Dr. Youssef El Idrissi" },
+]
 
 export default function PatientDetailPage({
   params,
@@ -125,16 +148,7 @@ export default function PatientDetailPage({
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Appointments" value={patient.appointments_count ?? 0} />
-        <StatCard label="Visits" value={patient.visits_count ?? 0} />
-        <StatCard
-          label="Blood Type"
-          value={patient.blood_type || "N/A"}
-          isBadge={!!patient.blood_type}
-        />
-        <StatCard label="Gender" value={patient.gender || "N/A"} />
-      </div>
+      <PatientStatsCards patientId={patient.id} bloodType={patient.blood_type} />
 
       <Tabs defaultValue="overview">
         <TabsList variant="line">
@@ -143,6 +157,19 @@ export default function PatientDetailPage({
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="lab-results">
+            <FlaskConical className="size-4" />
+            Lab Results
+          </TabsTrigger>
+          <TabsTrigger value="vaccinations">
+            <Syringe className="size-4" />
+            Vaccinations
+          </TabsTrigger>
+          <TabsTrigger value="referrals">
+            <ArrowRightLeft className="size-4" />
+            Referrals
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="pt-4">
@@ -159,6 +186,18 @@ export default function PatientDetailPage({
         </TabsContent>
         <TabsContent value="payments" className="pt-4">
           <PaymentsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="documents" className="pt-4">
+          <DocumentsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="lab-results" className="pt-4">
+          <LabResultsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="vaccinations" className="pt-4">
+          <VaccinationsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="referrals" className="pt-4">
+          <ReferralsTab patientId={patient.id} />
         </TabsContent>
       </Tabs>
 
@@ -203,6 +242,69 @@ function StatCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function PatientStatsCards({ patientId, bloodType }: { patientId: number; bloodType?: string | null }) {
+  const [stats, setStats] = useState<{
+    total_spend: number
+    pending_payments: number
+    visit_count: number
+    appointment_count: number
+    last_visit: string | null
+    last_appointment: string | null
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const { data } = await patientStatsApi.get(patientId)
+        setStats(data.data ?? data)
+      } catch {
+        // silently handled
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [patientId])
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 rounded-lg" />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <StatCard
+        label="Total Spend"
+        value={`${(stats?.total_spend ?? 0).toFixed(2)} MAD`}
+      />
+      <StatCard
+        label="Pending Payments"
+        value={`${(stats?.pending_payments ?? 0).toFixed(2)} MAD`}
+      />
+      <StatCard label="Visits" value={stats?.visit_count ?? 0} />
+      <StatCard label="Appointments" value={stats?.appointment_count ?? 0} />
+      <StatCard
+        label="Last Visit"
+        value={
+          stats?.last_visit
+            ? format(parseISO(stats.last_visit), "MMM d, yyyy")
+            : "N/A"
+        }
+      />
+      <StatCard
+        label="Blood Type"
+        value={bloodType || "N/A"}
+        isBadge={!!bloodType}
+      />
+    </div>
   )
 }
 
@@ -259,6 +361,20 @@ function OverviewTab({ patient }: { patient: Patient }) {
               label="Emergency Phone"
               value={patient.emergency_contact_phone}
             />
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+          <CardHeader className="pb-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <Shield className="size-4" />
+              Insurance Information
+            </h3>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4">
+            <InfoRow label="Insurance Provider" value={patient.insurance_provider} />
+            <InfoRow label="Insurance Number" value={patient.insurance_number} />
+            <InfoRow label="Insurance Type" value={patient.insurance_type} />
           </CardContent>
         </Card>
 
@@ -437,6 +553,171 @@ function PaymentsTab({ patientId }: { patientId: number }) {
   )
 }
 
+interface Document {
+  id: number
+  name: string
+  file_type: string
+  file_size: number
+  created_at: string
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function DocumentsTab({ patientId }: { patientId: number }) {
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
+
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const { data } = await documentsApi.list(patientId)
+      setDocuments(data.data ?? data ?? [])
+    } catch {
+      // silently handled
+    } finally {
+      setLoading(false)
+    }
+  }, [patientId])
+
+  useEffect(() => {
+    fetchDocuments()
+  }, [fetchDocuments])
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const reader = new FileReader()
+      const fileData = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(",")[1])
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      await documentsApi.upload(patientId, {
+        name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+        file_data: fileData,
+      })
+
+      toast("Document uploaded successfully")
+      await fetchDocuments()
+    } catch {
+      toast("Failed to upload document")
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  async function handleDelete(docId: number) {
+    setDeletingId(docId)
+    try {
+      await documentsApi.delete(docId)
+      toast("Document deleted successfully")
+      setDocuments((prev) => prev.filter((d) => d.id !== docId))
+    } catch {
+      toast("Failed to delete document")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  if (loading) return <TabSkeleton />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">
+          {documents.length} document{documents.length !== 1 ? "s" : ""}
+        </h3>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleUpload}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileUp className="size-4" />
+            )}
+            {uploading ? "Uploading..." : "Upload"}
+          </Button>
+        </div>
+      </div>
+
+      {documents.length === 0 ? (
+        <TabEmpty label="No documents uploaded for this patient." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {documents.map((doc, i) => (
+            <motion.div
+              key={doc.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+                <CardContent className="flex flex-col gap-2 py-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <File className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                      <span className="truncate text-sm font-medium">
+                        {doc.name}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={deletingId === doc.id}
+                      onClick={() => handleDelete(doc.id)}
+                    >
+                      {deletingId === doc.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5 text-destructive" />
+                      )}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{doc.file_type || "Unknown"}</span>
+                    <span>&middot;</span>
+                    <span>{formatFileSize(doc.file_size)}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {format(parseISO(doc.created_at), "MMM d, yyyy")}
+                  </span>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StatusBadge({ status }: { status: string }) {
   const variantMap: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
     completed: "default",
@@ -569,8 +850,8 @@ function DetailSkeleton() {
           <Skeleton className="h-4 w-64" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-20 rounded-lg" />
         ))}
       </div>
@@ -579,6 +860,596 @@ function DetailSkeleton() {
         <Skeleton className="h-64 rounded-lg" />
         <Skeleton className="h-64 rounded-lg" />
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Lab Results Tab (Task #42)                                        */
+/* ------------------------------------------------------------------ */
+
+interface LabOrder {
+  id: number
+  test_name: string
+  status: string
+  result: string | null
+  result_date: string | null
+  doctor_name: string | null
+  created_at: string
+}
+
+const labStatusColor: Record<string, string> = {
+  ordered: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+}
+
+function LabResultsTab({ patientId }: { patientId: number }) {
+  const [orders, setOrders] = useState<LabOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [form, setForm] = useState({ test_name: "", notes: "" })
+  const { toast } = useToast()
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const { data } = await labOrdersApi.list({ patient_id: patientId })
+      setOrders(data.data ?? data ?? [])
+    } catch {
+      // silently handled
+    } finally {
+      setLoading(false)
+    }
+  }, [patientId])
+
+  useEffect(() => {
+    fetchOrders()
+  }, [fetchOrders])
+
+  async function handleCreate() {
+    if (!form.test_name.trim()) return
+    setSubmitting(true)
+    try {
+      await labOrdersApi.create({ patient_id: patientId, test_name: form.test_name, notes: form.notes })
+      toast("Lab order created successfully")
+      setDialogOpen(false)
+      setForm({ test_name: "", notes: "" })
+      setLoading(true)
+      await fetchOrders()
+    } catch {
+      toast("Failed to create lab order")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return <TabSkeleton />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">
+          {orders.length} lab result{orders.length !== 1 ? "s" : ""}
+        </h3>
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          <Plus className="size-4" />
+          Order Test
+        </Button>
+      </div>
+
+      {orders.length === 0 ? (
+        <TabEmpty label="No lab results found for this patient." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {orders.map((order, i) => (
+            <motion.div
+              key={order.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+                <CardContent className="flex flex-col gap-2 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                      <span className="text-sm font-medium">{order.test_name}</span>
+                    </div>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${labStatusColor[order.status] ?? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"}`}>
+                      {order.status.replace("_", " ")}
+                    </span>
+                  </div>
+                  {order.status === "completed" && order.result && (
+                    <p className="text-sm text-muted-foreground">{order.result}</p>
+                  )}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {order.doctor_name && <span>Dr. {order.doctor_name}</span>}
+                    {order.doctor_name && order.result_date && <span>&middot;</span>}
+                    {order.result_date && (
+                      <span>{format(parseISO(order.result_date), "MMM d, yyyy")}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Ordered: {format(parseISO(order.created_at), "MMM d, yyyy")}
+                  </span>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Order Lab Test</DialogTitle>
+            <DialogDescription>Order a new lab test for this patient.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lab-test-name">Test Name</Label>
+              <Input
+                id="lab-test-name"
+                placeholder="e.g. Complete Blood Count"
+                value={form.test_name}
+                onChange={(e) => setForm((f) => ({ ...f, test_name: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lab-notes">Notes</Label>
+              <Textarea
+                id="lab-notes"
+                placeholder="Additional notes..."
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={submitting || !form.test_name.trim()}>
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                Order Test
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Vaccinations Tab (Task #44)                                       */
+/* ------------------------------------------------------------------ */
+
+interface Vaccination {
+  id: number
+  vaccine_name: string
+  dose_number: number
+  administered_at: string
+  next_dose_date: string | null
+  administered_by_name: string | null
+  batch_number: string | null
+  notes: string | null
+}
+
+function VaccinationsTab({ patientId }: { patientId: number }) {
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [form, setForm] = useState({
+    vaccine_name: "",
+    dose_number: "1",
+    administered_at: "",
+    next_dose_date: "",
+    batch_number: "",
+    notes: "",
+  })
+  const { toast } = useToast()
+
+  const fetchVaccinations = useCallback(async () => {
+    try {
+      const { data } = await vaccinationsApi.list(patientId)
+      setVaccinations(data.data ?? data ?? [])
+    } catch {
+      // silently handled
+    } finally {
+      setLoading(false)
+    }
+  }, [patientId])
+
+  useEffect(() => {
+    fetchVaccinations()
+  }, [fetchVaccinations])
+
+  async function handleCreate() {
+    if (!form.vaccine_name.trim() || !form.administered_at) return
+    setSubmitting(true)
+    try {
+      await vaccinationsApi.create({
+        patient_id: patientId,
+        vaccine_name: form.vaccine_name,
+        dose_number: Number(form.dose_number),
+        administered_at: form.administered_at,
+        next_dose_date: form.next_dose_date || null,
+        batch_number: form.batch_number || null,
+        notes: form.notes || null,
+      })
+      toast("Vaccination recorded successfully")
+      setDialogOpen(false)
+      setForm({ vaccine_name: "", dose_number: "1", administered_at: "", next_dose_date: "", batch_number: "", notes: "" })
+      setLoading(true)
+      await fetchVaccinations()
+    } catch {
+      toast("Failed to record vaccination")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return <TabSkeleton />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">
+          {vaccinations.length} vaccination{vaccinations.length !== 1 ? "s" : ""}
+        </h3>
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          <Plus className="size-4" />
+          Record Vaccination
+        </Button>
+      </div>
+
+      {vaccinations.length === 0 ? (
+        <TabEmpty label="No vaccinations recorded for this patient." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {vaccinations.map((vax, i) => (
+            <motion.div
+              key={vax.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+                <CardContent className="flex flex-col gap-2 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Syringe className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                      <span className="text-sm font-medium">{vax.vaccine_name}</span>
+                    </div>
+                    <Badge variant="secondary">Dose {vax.dose_number}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Administered: {format(parseISO(vax.administered_at), "MMM d, yyyy")}</span>
+                  </div>
+                  {vax.next_dose_date && (
+                    <span className="text-xs text-muted-foreground">
+                      Next dose: {format(parseISO(vax.next_dose_date), "MMM d, yyyy")}
+                    </span>
+                  )}
+                  {vax.batch_number && (
+                    <span className="text-xs text-muted-foreground">
+                      Batch: {vax.batch_number}
+                    </span>
+                  )}
+                  {vax.administered_by_name && (
+                    <span className="text-xs text-muted-foreground">
+                      By: {vax.administered_by_name}
+                    </span>
+                  )}
+                  {vax.notes && (
+                    <p className="text-xs text-muted-foreground">{vax.notes}</p>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Vaccination</DialogTitle>
+            <DialogDescription>Record a new vaccination for this patient.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vax-name">Vaccine Name</Label>
+              <Input
+                id="vax-name"
+                placeholder="e.g. Hepatitis B"
+                value={form.vaccine_name}
+                onChange={(e) => setForm((f) => ({ ...f, vaccine_name: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="vax-dose">Dose Number</Label>
+                <Input
+                  id="vax-dose"
+                  type="number"
+                  min="1"
+                  value={form.dose_number}
+                  onChange={(e) => setForm((f) => ({ ...f, dose_number: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="vax-batch">Batch Number</Label>
+                <Input
+                  id="vax-batch"
+                  placeholder="e.g. LOT-12345"
+                  value={form.batch_number}
+                  onChange={(e) => setForm((f) => ({ ...f, batch_number: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="vax-date">Administered Date</Label>
+                <Input
+                  id="vax-date"
+                  type="date"
+                  value={form.administered_at}
+                  onChange={(e) => setForm((f) => ({ ...f, administered_at: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="vax-next">Next Dose Date</Label>
+                <Input
+                  id="vax-next"
+                  type="date"
+                  value={form.next_dose_date}
+                  onChange={(e) => setForm((f) => ({ ...f, next_dose_date: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vax-notes">Notes</Label>
+              <Textarea
+                id="vax-notes"
+                placeholder="Additional notes..."
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={submitting || !form.vaccine_name.trim() || !form.administered_at}>
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                Record Vaccination
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Referrals Tab (Task #45)                                          */
+/* ------------------------------------------------------------------ */
+
+interface Referral {
+  id: number
+  referring_doctor_name: string | null
+  referred_to_name: string | null
+  reason: string
+  status: string
+  priority: string
+  outcome: string | null
+  created_at: string
+}
+
+const referralStatusColor: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  accepted: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  declined: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+}
+
+const referralPriorityColor: Record<string, string> = {
+  normal: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  urgent: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  emergency: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+}
+
+function ReferralsTab({ patientId }: { patientId: number }) {
+  const [referrals, setReferrals] = useState<Referral[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [form, setForm] = useState({
+    referred_to_doctor_id: "",
+    reason: "",
+    priority: "normal",
+    notes: "",
+  })
+  const { toast } = useToast()
+
+  const fetchReferrals = useCallback(async () => {
+    try {
+      const { data } = await referralsApi.list({ patient_id: patientId })
+      setReferrals(data.data ?? data ?? [])
+    } catch {
+      // silently handled
+    } finally {
+      setLoading(false)
+    }
+  }, [patientId])
+
+  useEffect(() => {
+    fetchReferrals()
+  }, [fetchReferrals])
+
+  async function handleCreate() {
+    if (!form.referred_to_doctor_id || !form.reason.trim()) return
+    setSubmitting(true)
+    try {
+      await referralsApi.create({
+        patient_id: patientId,
+        referred_to_doctor_id: Number(form.referred_to_doctor_id),
+        reason: form.reason,
+        priority: form.priority,
+        notes: form.notes || null,
+      })
+      toast("Referral created successfully")
+      setDialogOpen(false)
+      setForm({ referred_to_doctor_id: "", reason: "", priority: "normal", notes: "" })
+      setLoading(true)
+      await fetchReferrals()
+    } catch {
+      toast("Failed to create referral")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return <TabSkeleton />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">
+          {referrals.length} referral{referrals.length !== 1 ? "s" : ""}
+        </h3>
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          <Plus className="size-4" />
+          New Referral
+        </Button>
+      </div>
+
+      {referrals.length === 0 ? (
+        <TabEmpty label="No referrals found for this patient." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {referrals.map((ref, i) => (
+            <motion.div
+              key={ref.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+                <CardContent className="flex flex-col gap-2 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ArrowRightLeft className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                      <span className="text-sm font-medium truncate">{ref.reason}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${referralStatusColor[ref.status] ?? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"}`}>
+                      {ref.status}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${referralPriorityColor[ref.priority] ?? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
+                      {ref.priority}
+                    </span>
+                  </div>
+                  {ref.referring_doctor_name && (
+                    <span className="text-xs text-muted-foreground">
+                      From: {ref.referring_doctor_name}
+                    </span>
+                  )}
+                  {ref.referred_to_name && (
+                    <span className="text-xs text-muted-foreground">
+                      To: {ref.referred_to_name}
+                    </span>
+                  )}
+                  {ref.outcome && (
+                    <p className="text-xs text-muted-foreground">Outcome: {ref.outcome}</p>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {format(parseISO(ref.created_at), "MMM d, yyyy")}
+                  </span>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Referral</DialogTitle>
+            <DialogDescription>Create a new referral for this patient.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ref-doctor">Referred To</Label>
+              <Select
+                value={form.referred_to_doctor_id}
+                onValueChange={(v) => setForm((f) => ({ ...f, referred_to_doctor_id: v ?? "" }))}
+              >
+                <SelectTrigger id="ref-doctor">
+                  <SelectValue placeholder="Select doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DOCTORS.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ref-reason">Reason</Label>
+              <Input
+                id="ref-reason"
+                placeholder="Reason for referral"
+                value={form.reason}
+                onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ref-priority">Priority</Label>
+              <Select
+                value={form.priority}
+                onValueChange={(v) => setForm((f) => ({ ...f, priority: v ?? "normal" }))}
+              >
+                <SelectTrigger id="ref-priority">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                  <SelectItem value="emergency">Emergency</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ref-notes">Notes</Label>
+              <Textarea
+                id="ref-notes"
+                placeholder="Additional notes..."
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={submitting || !form.referred_to_doctor_id || !form.reason.trim()}>
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                Create Referral
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

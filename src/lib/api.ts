@@ -118,3 +118,120 @@ export const backupApi = {
 export const exportApi = {
   csv: (entity: string) => api.get(`/export/${entity}`, { responseType: 'blob' }),
 };
+
+export const schedulesApi = {
+  list: (doctorId?: number) => api.get('/schedules', { params: doctorId ? { doctor_id: doctorId } : {} }),
+  create: (data: any) => api.post('/schedules', data),
+  update: (id: number, data: any) => api.put(`/schedules/${id}`, data),
+  delete: (id: number) => api.delete(`/schedules/${id}`),
+};
+
+export const documentsApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/documents`),
+  get: (id: number) => api.get(`/documents/${id}`),
+  upload: (patientId: number, data: any) => api.post(`/patients/${patientId}/documents`, data),
+  delete: (id: number) => api.delete(`/documents/${id}`),
+};
+
+export const medicationsApi = {
+  search: (q: string) => api.get('/medications', { params: { q } }),
+};
+
+export const visitTemplatesApi = {
+  list: () => api.get('/visit-templates'),
+  create: (data: any) => api.post('/visit-templates', data),
+  delete: (id: number) => api.delete(`/visit-templates/${id}`),
+};
+
+export const patientStatsApi = {
+  get: (patientId: number) => api.get(`/patients/${patientId}/stats`),
+};
+
+export const reportsApi = {
+  financial: (params?: Record<string, any>) => api.get('/reports/financial', { params }),
+  clinical: (params?: Record<string, any>) => api.get('/reports/clinical', { params }),
+};
+
+export const conflictApi = {
+  check: (params: Record<string, any>) => api.get('/appointments/check-conflict', { params }),
+};
+
+export const remindApi = {
+  send: (appointmentId: number) => api.post(`/appointments/${appointmentId}/remind`),
+};
+
+export const seedApi = {
+  generate: (count: number) => api.post('/seed', { count }),
+};
+
+export const passwordApi = {
+  change: (current_password: string, new_password: string) => api.post('/auth/change-password', { current_password, new_password }),
+};
+
+export const inventoryApi = {
+  list: (params?: Record<string, any>) => api.get('/inventory', { params }),
+  get: (id: number) => api.get(`/inventory/${id}`),
+  create: (data: any) => api.post('/inventory', data),
+  update: (id: number, data: any) => api.put(`/inventory/${id}`, data),
+  adjust: (id: number, data: any) => api.post(`/inventory/${id}/adjust`, data),
+  delete: (id: number) => api.delete(`/inventory/${id}`),
+  lowStock: () => api.get('/inventory/alerts/low-stock'),
+};
+
+export const payrollApi = {
+  list: (params?: Record<string, any>) => api.get('/payroll', { params }),
+  create: (data: any) => api.post('/payroll', data),
+  update: (id: number, data: any) => api.put(`/payroll/${id}`, data),
+  markPaid: (id: number) => api.patch(`/payroll/${id}/pay`),
+};
+
+export const labOrdersApi = {
+  list: (params?: Record<string, any>) => api.get('/lab-orders', { params }),
+  create: (data: any) => api.post('/lab-orders', data),
+  update: (id: number, data: any) => api.patch(`/lab-orders/${id}`, data),
+};
+
+export const vaccinationsApi = {
+  list: (patientId: number) => api.get('/vaccinations', { params: { patient_id: patientId } }),
+  create: (data: any) => api.post('/vaccinations', data),
+  delete: (id: number) => api.delete(`/vaccinations/${id}`),
+};
+
+export const referralsApi = {
+  list: (params?: Record<string, any>) => api.get('/referrals', { params }),
+  create: (data: any) => api.post('/referrals', data),
+  update: (id: number, data: any) => api.patch(`/referrals/${id}`, data),
+};
+
+export const expensesApi = {
+  list: (params?: Record<string, any>) => api.get('/expenses', { params }),
+  create: (data: any) => api.post('/expenses', data),
+  delete: (id: number) => api.delete(`/expenses/${id}`),
+};
+
+export const leavesApi = {
+  list: (params?: Record<string, any>) => api.get('/leaves', { params }),
+  create: (data: any) => api.post('/leaves', data),
+  approve: (id: number, status: string) => api.patch(`/leaves/${id}`, { status }),
+};
+
+export const bulkNotifyApi = {
+  send: (data: any) => api.post('/notifications/bulk', data),
+};
+
+export const waitingRoomApi = {
+  get: () => api.get('/waiting-room'),
+};
+
+export const qrApi = {
+  getToken: (appointmentId: number) => api.get(`/appointments/${appointmentId}/qr-token`),
+};
+
+export const portalApi = {
+  login: (phone: string) => api.post('/portal/login', { phone }),
+  getData: (token: string) => api.get('/portal/patient', { headers: { Authorization: `Bearer ${token}` } }),
+};
+
+export const doctorPerformanceApi = {
+  get: () => api.get('/analytics/doctor-performance'),
+};

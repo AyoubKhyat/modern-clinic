@@ -17,8 +17,13 @@ import {
   LogOut,
   Activity,
   ClipboardList,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
+  Receipt,
+  CalendarOff,
+  Bell,
+  Monitor,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -56,6 +61,12 @@ const navItems: NavItem[] = [
   { labelKey: "nav.inventory", label: "Inventory", href: "/inventory", icon: Package, roles: ["admin"] },
   { labelKey: "nav.payroll", label: "Payroll", href: "/payroll", icon: Wallet, roles: ["admin"] },
   { labelKey: "nav.analytics", label: "Analytics", href: "/analytics", icon: BarChart3, roles: ["admin"] },
+  { labelKey: "nav.reports", label: "Reports", href: "/reports", icon: Activity, roles: ["admin"] },
+  { labelKey: "nav.staff_scheduling", label: "Staff Schedule", href: "/staff-scheduling", icon: CalendarClock, roles: ["admin"] },
+  { labelKey: "nav.expenses", label: "Expenses", href: "/expenses", icon: Receipt, roles: ["admin", "accountant"] },
+  { labelKey: "nav.leaves", label: "Leave Mgmt", href: "/leaves", icon: CalendarOff, roles: ["admin"] },
+  { labelKey: "nav.bulk_notify", label: "Notifications", href: "/bulk-notify", icon: Bell, roles: ["admin"] },
+  { labelKey: "nav.waiting_room", label: "Waiting Room", href: "/waiting-room", icon: Monitor, roles: ["admin", "receptionist"] },
   { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },
   { labelKey: "nav.settings", label: "Settings", href: "/settings", icon: Settings, roles: ["admin"] },
 ]

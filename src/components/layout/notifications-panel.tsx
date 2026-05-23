@@ -124,27 +124,29 @@ export function NotificationsPanel() {
   const [open, setOpen] = useState(false)
   const isMobile = useMediaQuery("(max-width: 639px)")
 
-  const fetchNotifications = useCallback(async () => {
-    setLoading(true)
+  const fetchNotifications = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const { data } = await notificationsApi.list()
       setItems(data)
     } catch {
-      setItems([])
+      if (!silent) setItems([])
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }, [])
+
+  useEffect(() => {
+    fetchNotifications(true)
+  }, [fetchNotifications])
 
   useEffect(() => {
     if (open) fetchNotifications()
   }, [open, fetchNotifications])
 
-  // Poll every 30s when open
   useEffect(() => {
-    if (!open) return
-    const interval = setInterval(fetchNotifications, 30000)
+    const interval = setInterval(() => fetchNotifications(true), 30000)
     return () => clearInterval(interval)
-  }, [open, fetchNotifications])
+  }, [fetchNotifications])
 
   const unreadCount = items.filter((i) => !i.read).length
 

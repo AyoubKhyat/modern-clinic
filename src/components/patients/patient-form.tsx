@@ -24,6 +24,7 @@ interface PatientFormProps {
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
 const GENDERS = ["Male", "Female", "Other"]
+const INSURANCE_TYPES = ["None", "CNSS", "AMO", "Private", "Mutuelle"]
 
 export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) {
   const isEdit = !!patient
@@ -40,6 +41,9 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
     allergies: patient?.allergies ?? "",
     emergency_contact_name: patient?.emergency_contact_name ?? "",
     emergency_contact_phone: patient?.emergency_contact_phone ?? "",
+    insurance_provider: patient?.insurance_provider ?? "",
+    insurance_number: patient?.insurance_number ?? "",
+    insurance_type: patient?.insurance_type ?? "",
     notes: patient?.notes ?? "",
   })
 
@@ -209,6 +213,42 @@ export function PatientForm({ patient, onSuccess, onCancel }: PatientFormProps) 
             onChange={(e) => update("emergency_contact_phone", e.target.value)}
             className="h-9"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="insurance_provider">Insurance Provider</Label>
+          <Input
+            id="insurance_provider"
+            value={form.insurance_provider}
+            onChange={(e) => update("insurance_provider", e.target.value)}
+            className="h-9"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="insurance_number">Insurance / CNSS Number</Label>
+          <Input
+            id="insurance_number"
+            value={form.insurance_number}
+            onChange={(e) => update("insurance_number", e.target.value)}
+            className="h-9"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label>Insurance Type</Label>
+          <Select value={form.insurance_type} onValueChange={(v) => update("insurance_type", v ?? "")}>
+            <SelectTrigger className="h-9 w-full">
+              <SelectValue placeholder="Select insurance type" />
+            </SelectTrigger>
+            <SelectContent>
+              {INSURANCE_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

@@ -15,10 +15,13 @@ import {
   X,
   Printer,
   Download,
+  FileText,
 } from "lucide-react"
 import { paymentsApi, patientsApi } from "@/lib/api"
 import { printPaymentReceipt } from "@/lib/print-payment"
+import { printInvoice } from "@/lib/print-invoice"
 import { downloadCsv } from "@/lib/export-csv"
+import { useI18n } from "@/lib/i18n"
 import type { Payment, Patient, PaginatedResponse } from "@/types"
 import {
   paymentStatusConfig,
@@ -61,6 +64,7 @@ import { useToast } from "@/components/ui/toast"
 
 export default function PaymentsPage() {
   const { toast } = useToast()
+  const { locale } = useI18n()
   const [payments, setPayments] = useState<Payment[]>([])
   const [meta, setMeta] = useState<PaginatedResponse<Payment>["meta"] | null>(null)
   const [page, setPage] = useState(1)
@@ -273,10 +277,18 @@ export default function PaymentsPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() => printPaymentReceipt(payment)}
+                          onClick={() => printPaymentReceipt(payment, undefined, locale)}
                           title="Print receipt"
                         >
                           <Printer className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => printInvoice(payment)}
+                          title="Print invoice"
+                        >
+                          <FileText className="size-4" />
                         </Button>
                         <Button
                           variant="ghost"

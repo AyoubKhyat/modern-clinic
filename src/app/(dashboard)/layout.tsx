@@ -12,6 +12,7 @@ import { CommandPalette } from "@/components/command-palette/command-palette"
 import { AiChatPanel } from "@/components/ai-assistant/ai-chat-panel"
 import { ToastProvider } from "@/components/ui/toast"
 import { WelcomeModal } from "@/components/onboarding/welcome-modal"
+import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts"
 import { I18nProvider } from "@/lib/i18n"
 
 interface SidebarContextValue {
@@ -134,6 +135,7 @@ export default function DashboardLayout({
             <CommandPalette open={cmdPaletteOpen} onOpenChange={setCmdPaletteOpen} />
             <AiChatPanel />
             <WelcomeModal />
+            <KeyboardShortcuts />
           </ToastProvider>
         </SidebarProvider>
         </I18nProvider>

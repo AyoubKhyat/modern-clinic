@@ -43,6 +43,15 @@ const routeLabels: Record<string, string> = {
   inventory: "Inventory",
   payroll: "Payroll",
   analytics: "Analytics",
+  reports: "Reports",
+  "staff-scheduling": "Staff Schedule",
+  expenses: "Expenses",
+  leaves: "Leave Management",
+  "bulk-notify": "Bulk Notifications",
+  "waiting-room": "Waiting Room",
+  "doctor-performance": "Doctor Performance",
+  portal: "Patient Portal",
+  "audit-log": "Audit Log",
   settings: "Settings",
 }
 
