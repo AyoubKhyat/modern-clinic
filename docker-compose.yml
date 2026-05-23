@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - JWT_SECRET=${JWT_SECRET:-clinic-dev-secret-change-in-production}
+      - DB_PATH=./data/clinic.db
+      - CORS_ORIGIN=http://localhost:3000
+      - NODE_ENV=production
+    volumes:
+      - clinic-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  clinic-data:

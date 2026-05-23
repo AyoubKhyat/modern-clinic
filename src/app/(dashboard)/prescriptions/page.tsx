@@ -524,7 +524,7 @@ function PrescriptionForm({
             autoComplete="off"
           />
           {patientId && (
-            <span className="text-xs text-green-600">Patient selected</span>
+            <span className="text-xs text-green-600 dark:text-green-400">Patient selected</span>
           )}
           {showPatientDropdown && patientResults.length > 0 && (
             <div className="absolute top-[calc(100%+2px)] left-0 z-50 w-full rounded-lg border bg-popover shadow-md">

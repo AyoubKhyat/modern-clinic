@@ -9,34 +9,32 @@ import {
   CreditCard,
   CheckCheck,
   Inbox,
+  Info,
 } from "lucide-react"
-import { dashboardApi } from "@/lib/api"
-import { useAuthStore } from "@/stores/auth-store"
+import { notificationsApi } from "@/lib/api"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet"
-import type { Appointment, Payment } from "@/types"
 
 interface NotificationItem {
-  id: string
-  type: "appointment" | "payment"
+  id: number
   title: string
-  description: string
-  timestamp: string
+  message: string
+  type: string
   read: boolean
+  created_at: string
 }
 
-function getReadIds(): Set<string> {
-  try {
-    const stored = localStorage.getItem("clinic_notifications_read")
-    return stored ? new Set(JSON.parse(stored)) : new Set()
-  } catch {
-    return new Set()
-  }
+const typeIcons: Record<string, typeof CalendarDays> = {
+  appointment: CalendarDays,
+  payment: CreditCard,
+  info: Info,
 }
 
-function saveReadIds(ids: Set<string>) {
-  localStorage.setItem("clinic_notifications_read", JSON.stringify([...ids]))
+const typeColors: Record<string, { icon: string; bg: string }> = {
+  appointment: { icon: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10" },
+  payment: { icon: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+  info: { icon: "text-teal-600 dark:text-teal-400", bg: "bg-teal-500/10" },
 }
 
 function NotificationContent({
@@ -52,7 +50,6 @@ function NotificationContent({
 }) {
   return (
     <>
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
         <h3 className="text-sm font-semibold">Notifications</h3>
         {unreadCount > 0 && (
@@ -66,15 +63,11 @@ function NotificationContent({
         )}
       </div>
 
-      {/* Content */}
       <div className="max-h-[400px] flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex flex-col gap-2 p-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 rounded-lg p-2"
-              >
+              <div key={i} className="flex items-start gap-3 rounded-lg p-2">
                 <div className="size-8 shrink-0 animate-pulse rounded-lg bg-muted" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 w-24 animate-pulse rounded bg-muted" />
@@ -88,58 +81,36 @@ function NotificationContent({
             <div className="flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500/10 to-blue-500/10">
               <Inbox className="size-5 text-teal-600/60 dark:text-teal-400/60" />
             </div>
-            <p className="text-sm text-muted-foreground/60">
-              No recent activity
-            </p>
+            <p className="text-sm text-muted-foreground/60">No notifications</p>
           </div>
         ) : (
           <div className="flex flex-col p-1.5">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/30 ${
-                  !item.read ? "bg-teal-500/[0.04]" : ""
-                }`}
-              >
+            {items.map((item) => {
+              const colors = typeColors[item.type] ?? typeColors.info
+              const Icon = typeIcons[item.type] ?? Info
+              return (
                 <div
-                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${
-                    item.type === "appointment"
-                      ? "bg-blue-500/10"
-                      : "bg-emerald-500/10"
+                  key={item.id}
+                  className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/30 ${
+                    !item.read ? "bg-teal-500/[0.04]" : ""
                   }`}
                 >
-                  {item.type === "appointment" ? (
-                    <CalendarDays
-                      className={`size-3.5 ${
-                        item.type === "appointment"
-                          ? "text-blue-600 dark:text-blue-400"
-                          : "text-emerald-600 dark:text-emerald-400"
-                      }`}
-                    />
-                  ) : (
-                    <CreditCard className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {item.title}
-                    </span>
-                    {!item.read && (
-                      <span className="size-1.5 shrink-0 rounded-full bg-teal-500" />
-                    )}
+                  <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${colors.bg}`}>
+                    <Icon className={`size-3.5 ${colors.icon}`} />
                   </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.description}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground/50">
-                    {formatDistanceToNow(parseISO(item.timestamp), {
-                      addSuffix: true,
-                    })}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{item.title}</span>
+                      {!item.read && <span className="size-1.5 shrink-0 rounded-full bg-teal-500" />}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">{item.message}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/50">
+                      {formatDistanceToNow(parseISO(item.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -148,86 +119,40 @@ function NotificationContent({
 }
 
 export function NotificationsPanel() {
-  const { user } = useAuthStore()
   const [items, setItems] = useState<NotificationItem[]>([])
-  const [readIds, setReadIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const isMobile = useMediaQuery("(max-width: 639px)")
 
-  useEffect(() => {
-    setReadIds(getReadIds())
-  }, [])
-
   const fetchNotifications = useCallback(async () => {
-    if (!user?.role) return
     setLoading(true)
     try {
-      const endpoint =
-        user.role === "admin"
-          ? dashboardApi.admin
-          : user.role === "doctor"
-            ? dashboardApi.doctor
-            : dashboardApi.reception
-
-      const { data } = await endpoint()
-      const dashboard = data.data ?? data
-      const notifications: NotificationItem[] = []
-
-      const appointments: Appointment[] =
-        dashboard.recent_appointments ?? dashboard.today_appointments ?? []
-      for (const apt of appointments.slice(0, 5)) {
-        notifications.push({
-          id: `apt-${apt.id}`,
-          type: "appointment",
-          title: apt.patient
-            ? `${apt.patient.first_name} ${apt.patient.last_name}`
-            : "Patient",
-          description: `${apt.status === "scheduled" ? "Scheduled" : apt.status} — ${apt.type || "consultation"}`,
-          timestamp: apt.scheduled_at ?? apt.created_at,
-          read: readIds.has(`apt-${apt.id}`),
-        })
-      }
-
-      const payments: Payment[] =
-        dashboard.recent_payments ?? dashboard.pending_payments ?? []
-      for (const pay of payments.slice(0, 3)) {
-        notifications.push({
-          id: `pay-${pay.id}`,
-          type: "payment",
-          title: pay.patient
-            ? `${pay.patient.first_name} ${pay.patient.last_name}`
-            : "Payment",
-          description: `${pay.amount.toFixed(2)} MAD — ${pay.status}`,
-          timestamp: pay.paid_at ?? pay.created_at,
-          read: readIds.has(`pay-${pay.id}`),
-        })
-      }
-
-      notifications.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-
-      setItems(notifications.slice(0, 8))
+      const { data } = await notificationsApi.list()
+      setItems(data)
     } catch {
       setItems([])
     }
     setLoading(false)
-  }, [user?.role, readIds])
+  }, [])
 
   useEffect(() => {
     if (open) fetchNotifications()
   }, [open, fetchNotifications])
 
+  // Poll every 30s when open
+  useEffect(() => {
+    if (!open) return
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [open, fetchNotifications])
+
   const unreadCount = items.filter((i) => !i.read).length
 
-  function markAllRead() {
-    const newReadIds = new Set(readIds)
-    for (const item of items) newReadIds.add(item.id)
-    setReadIds(newReadIds)
-    saveReadIds(newReadIds)
-    setItems((prev) => prev.map((i) => ({ ...i, read: true })))
+  async function markAllRead() {
+    try {
+      await notificationsApi.markAllRead()
+      setItems((prev) => prev.map((i) => ({ ...i, read: true })))
+    } catch {}
   }
 
   const triggerContent = (

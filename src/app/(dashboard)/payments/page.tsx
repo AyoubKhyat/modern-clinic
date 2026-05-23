@@ -13,8 +13,10 @@ import {
   Loader2,
   CreditCard,
   X,
+  Printer,
 } from "lucide-react"
 import { paymentsApi, patientsApi } from "@/lib/api"
+import { printPaymentReceipt } from "@/lib/print-payment"
 import type { Payment, Patient, PaginatedResponse } from "@/types"
 import {
   paymentStatusConfig,
@@ -263,6 +265,14 @@ export default function PaymentsPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          onClick={() => printPaymentReceipt(payment)}
+                          title="Print receipt"
+                        >
+                          <Printer className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
                           onClick={() => openEdit(payment)}
                         >
                           <Edit className="size-4" />
@@ -443,7 +453,7 @@ function PaymentForm({
           autoComplete="off"
         />
         {patientId && (
-          <span className="text-xs text-green-600">Patient selected</span>
+          <span className="text-xs text-green-600 dark:text-green-400">Patient selected</span>
         )}
         {showPatientDropdown && patientResults.length > 0 && (
           <div className="absolute top-[calc(100%+2px)] left-0 z-50 w-full rounded-lg border bg-popover shadow-md">

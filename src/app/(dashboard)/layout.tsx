@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CommandPalette } from "@/components/command-palette/command-palette"
 import { AiChatPanel } from "@/components/ai-assistant/ai-chat-panel"
 import { ToastProvider } from "@/components/ui/toast"
+import { WelcomeModal } from "@/components/onboarding/welcome-modal"
 
 interface SidebarContextValue {
   collapsed: boolean
@@ -130,6 +131,7 @@ export default function DashboardLayout({
             </div>
             <CommandPalette open={cmdPaletteOpen} onOpenChange={setCmdPaletteOpen} />
             <AiChatPanel />
+            <WelcomeModal />
           </ToastProvider>
         </SidebarProvider>
       </AuthGuard>
