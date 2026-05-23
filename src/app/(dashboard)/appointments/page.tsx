@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { motion } from "framer-motion"
-import { format, parseISO } from "date-fns"
+import { format, parseISO, startOfWeek, addWeeks, subWeeks } from "date-fns"
 import {
   Search,
   Plus,
@@ -11,10 +11,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  CalendarDays as CalendarGrid,
   Clock,
+  List,
   Loader2,
+  Download,
 } from "lucide-react"
-import { appointmentsApi, patientsApi } from "@/lib/api"
+import { appointmentsApi, appointmentsRangeApi, patientsApi } from "@/lib/api"
+import { downloadCsv } from "@/lib/export-csv"
+import { WeekCalendar } from "@/components/appointments/week-calendar"
 import type { Appointment, Patient, PaginatedResponse } from "@/types"
 import {
   appointmentStatusConfig,
@@ -92,6 +97,11 @@ export default function AppointmentsPage() {
   const [statusFilter, setStatusFilter] = useState("")
   const [search, setSearch] = useState("")
 
+  const [viewMode, setViewMode] = useState<"table" | "calendar">("table")
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [calendarAppts, setCalendarAppts] = useState<Appointment[]>([])
+  const [calendarLoading, setCalendarLoading] = useState(false)
+
   const [formOpen, setFormOpen] = useState(false)
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -122,6 +132,17 @@ export default function AppointmentsPage() {
     const timeout = setTimeout(() => setPage(1), 300)
     return () => clearTimeout(timeout)
   }, [search, dateFilter, statusFilter])
+
+  useEffect(() => {
+    if (viewMode !== "calendar") return
+    setCalendarLoading(true)
+    const start = format(weekStart, "yyyy-MM-dd")
+    const end = format(addWeeks(weekStart, 1), "yyyy-MM-dd")
+    appointmentsRangeApi.range(start, end)
+      .then(({ data }) => setCalendarAppts(data))
+      .catch(() => setCalendarAppts([]))
+      .finally(() => setCalendarLoading(false))
+  }, [viewMode, weekStart])
 
   function openCreate() {
     setEditingAppointment(null)
@@ -161,10 +182,16 @@ export default function AppointmentsPage() {
         title="Appointments"
         description="Schedule and manage patient appointments"
         action={
-          <Button onClick={openCreate}>
-            <Plus className="size-4" />
-            New Appointment
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => downloadCsv("appointments").then(() => toast("CSV exported")).catch(() => toast("Export failed", "error"))}>
+              <Download className="size-4" />
+              Export
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              New Appointment
+            </Button>
+          </div>
         }
       />
 
@@ -200,15 +227,56 @@ export default function AppointmentsPage() {
             ))}
           </SelectContent>
         </Select>
+        <div className="ml-auto inline-flex rounded-lg border border-border/40 p-0.5">
+          <Button
+            variant={viewMode === "table" ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={() => setViewMode("table")}
+          >
+            <List className="size-4" />
+          </Button>
+          <Button
+            variant={viewMode === "calendar" ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={() => setViewMode("calendar")}
+          >
+            <CalendarGrid className="size-4" />
+          </Button>
+        </div>
       </div>
 
-      {loading ? (
+      {viewMode === "calendar" ? (
+        <>
+          <div className="flex items-center justify-between">
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(subWeeks(weekStart, 1))}>
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+            <span className="text-sm font-medium">
+              {format(weekStart, "MMM d")} – {format(addWeeks(weekStart, 6), "MMM d, yyyy")}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(addWeeks(weekStart, 1))}>
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          {calendarLoading ? (
+            <TableSkeleton columns={8} rows={4} />
+          ) : (
+            <WeekCalendar
+              appointments={calendarAppts}
+              weekStart={weekStart}
+              onAppointmentClick={openDetail}
+            />
+          )}
+        </>
+      ) : loading ? (
         <TableSkeleton columns={6} />
       ) : appointments.length === 0 ? (
         <EmptyState search={search} onCreate={openCreate} />
       ) : (
         <>
-          <div className="rounded-xl border-0 overflow-hidden ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
+          <div className="rounded-xl border-0 overflow-hidden overflow-x-auto ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -440,6 +508,7 @@ function AppointmentForm({
   const [selectedPatientName, setSelectedPatientName] = useState(appointment?.patient?.full_name ?? "")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -492,10 +561,12 @@ function AppointmentForm({
     e.preventDefault()
     setError("")
 
-    if (!form.patient_id) {
-      setError("Please select a patient.")
-      return
-    }
+    const errs: Record<string, string> = {}
+    if (!form.patient_id) errs.patient_id = "Please select a patient"
+    if (!form.doctor_id) errs.doctor_id = "Please select a doctor"
+    if (!form.scheduled_at) errs.scheduled_at = "Date & time is required"
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) return
 
     setLoading(true)
     try {

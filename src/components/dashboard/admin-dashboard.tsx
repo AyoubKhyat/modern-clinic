@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { motion } from "framer-motion"
 import { format, parseISO } from "date-fns"
 import Link from "next/link"
@@ -17,6 +17,8 @@ import {
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -29,7 +31,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { dashboardApi } from "@/lib/api"
+import { dashboardApi, analyticsApi } from "@/lib/api"
 import {
   AnimatedCounter,
   CustomTooltip,
@@ -130,6 +132,8 @@ export function AdminDashboardView() {
   const [data, setData] = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [revenueTrend, setRevenueTrend] = useState<{month: string; revenue: number}[]>([])
+  const [appointmentTrend, setAppointmentTrend] = useState<{month: string; count: number}[]>([])
   const { user } = useAuthStore()
 
   useEffect(() => {
@@ -138,6 +142,9 @@ export function AdminDashboardView() {
       .then((res) => setData(res.data))
       .catch(() => setError("Failed to load dashboard data"))
       .finally(() => setLoading(false))
+
+    analyticsApi.revenueTrend().then((res) => setRevenueTrend(res.data)).catch(() => {})
+    analyticsApi.appointmentTrend().then((res) => setAppointmentTrend(res.data)).catch(() => {})
   }, [])
 
   if (loading) return <DashboardSkeleton />
@@ -338,6 +345,61 @@ export function AdminDashboardView() {
                     <span className="text-xs text-muted-foreground">Total</span>
                   </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Revenue & Appointment Trends */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+            <CardHeader>
+              <CardTitle>Revenue Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {revenueTrend.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground">No data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={revenueTrend} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                    <defs>
+                      <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
+                    <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" />
+                    <ReTooltip content={<CustomTooltip valueSuffix="MAD" />} />
+                    <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="url(#revenueGrad)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
+            <CardHeader>
+              <CardTitle>Appointment Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {appointmentTrend.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground">No data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={appointmentTrend} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} className="fill-muted-foreground" />
+                    <ReTooltip content={<CustomTooltip valueSuffix="appointments" />} />
+                    <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               )}
             </CardContent>
           </Card>

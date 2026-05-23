@@ -14,9 +14,11 @@ import {
   CreditCard,
   X,
   Printer,
+  Download,
 } from "lucide-react"
 import { paymentsApi, patientsApi } from "@/lib/api"
 import { printPaymentReceipt } from "@/lib/print-payment"
+import { downloadCsv } from "@/lib/export-csv"
 import type { Payment, Patient, PaginatedResponse } from "@/types"
 import {
   paymentStatusConfig,
@@ -133,10 +135,16 @@ export default function PaymentsPage() {
         title="Payments"
         description="Track and manage patient payments"
         action={
-          <Button onClick={openCreate}>
-            <Plus className="size-4" />
-            Record Payment
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => downloadCsv("payments").then(() => toast("CSV exported")).catch(() => toast("Export failed", "error"))}>
+              <Download className="size-4" />
+              Export
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              Record Payment
+            </Button>
+          </div>
         }
       />
 
@@ -194,7 +202,7 @@ export default function PaymentsPage() {
         <EmptyState onCreate={openCreate} />
       ) : (
         <>
-          <div className="rounded-xl border-0 overflow-hidden ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
+          <div className="rounded-xl border-0 overflow-hidden overflow-x-auto ring-1 ring-foreground/[0.06] shadow-sm dark:ring-foreground/[0.04]">
             <Table>
               <TableHeader>
                 <TableRow>

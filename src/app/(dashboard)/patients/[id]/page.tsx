@@ -14,6 +14,10 @@ import {
   Edit,
   Loader2,
   Inbox,
+  Activity,
+  Stethoscope,
+  CreditCard,
+  Clock,
 } from "lucide-react"
 import { patientsApi, appointmentsApi, visitsApi, paymentsApi } from "@/lib/api"
 import type { Patient, Appointment, Visit, Payment } from "@/types"
@@ -135,6 +139,7 @@ export default function PatientDetailPage({
       <Tabs defaultValue="overview">
         <TabsList variant="line">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
@@ -142,6 +147,9 @@ export default function PatientDetailPage({
 
         <TabsContent value="overview" className="pt-4">
           <OverviewTab patient={patient} />
+        </TabsContent>
+        <TabsContent value="timeline" className="pt-4">
+          <TimelineTab patientId={patient.id} />
         </TabsContent>
         <TabsContent value="appointments" className="pt-4">
           <AppointmentsTab patientId={patient.id} />
@@ -474,6 +482,78 @@ function TabEmpty({ label }: { label: string }) {
         <Inbox className="size-5 text-teal-600 dark:text-teal-400" />
       </div>
       <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+function TimelineTab({ patientId }: { patientId: number }) {
+  const [events, setEvents] = useState<{ type: string; date: string; title: string; detail: string }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [aptsRes, visitsRes, paysRes] = await Promise.all([
+          appointmentsApi.list({ patient_id: patientId, per_page: 50 }),
+          visitsApi.list({ patient_id: patientId, per_page: 50 }),
+          paymentsApi.list({ patient_id: patientId, per_page: 50 }),
+        ])
+        const items: { type: string; date: string; title: string; detail: string }[] = []
+        for (const a of aptsRes.data.data ?? []) {
+          items.push({ type: "appointment", date: a.scheduled_at || a.created_at, title: `Appointment — ${a.type}`, detail: a.reason || a.status })
+        }
+        for (const v of visitsRes.data.data ?? []) {
+          items.push({ type: "visit", date: v.created_at, title: `Visit — ${v.status}`, detail: v.chief_complaint || v.diagnosis || "" })
+        }
+        for (const p of paysRes.data.data ?? []) {
+          items.push({ type: "payment", date: p.created_at, title: `Payment — ${p.amount} MAD`, detail: `${p.payment_type} (${p.status})` })
+        }
+        items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        setEvents(items)
+      } catch {}
+      setLoading(false)
+    })()
+  }, [patientId])
+
+  if (loading) return <TabSkeleton />
+  if (events.length === 0) return <TabEmpty label="No activity recorded for this patient." />
+
+  const iconMap: Record<string, typeof Calendar> = { appointment: Calendar, visit: Stethoscope, payment: CreditCard }
+  const colorMap: Record<string, string> = {
+    appointment: "bg-blue-500",
+    visit: "bg-teal-500",
+    payment: "bg-emerald-500",
+  }
+
+  return (
+    <div className="relative space-y-4 pl-8">
+      <div className="absolute left-3 top-2 bottom-2 w-px bg-gradient-to-b from-teal-400/50 via-border to-transparent" />
+      {events.map((event, i) => {
+        const Icon = iconMap[event.type] ?? Clock
+        return (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="relative"
+          >
+            <div className={`absolute -left-5 top-2 size-2.5 rounded-full ring-2 ring-background ${colorMap[event.type] ?? "bg-gray-400"}`} />
+            <div className="rounded-lg bg-muted/30 p-3">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                  <Icon className="size-3.5 text-muted-foreground" />
+                  {event.title}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {format(parseISO(event.date), "MMM d, yyyy")}
+                </span>
+              </div>
+              {event.detail && <p className="mt-1 text-xs text-muted-foreground">{event.detail}</p>}
+            </div>
+          </motion.div>
+        )
+      })}
     </div>
   )
 }
