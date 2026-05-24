@@ -177,7 +177,11 @@ export default function RoomsPage() {
     setLoading(true)
     try {
       const { data } = await roomsApi.list()
-      setRooms(data.data ?? data)
+      const rows = (data.data ?? data).map((r: any) => ({
+        ...r,
+        equipment: typeof r.equipment === "string" ? r.equipment.split(",").map((s: string) => s.trim()).filter(Boolean) : (r.equipment ?? []),
+      }))
+      setRooms(rows)
     } catch {
       // empty state shown
     } finally {

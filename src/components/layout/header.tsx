@@ -63,6 +63,7 @@ const routeLabels: Record<string, string> = {
   "recurring-appointments": "Recurring Appointments",
   budgeting: "Budgeting",
   "consent-forms": "Consent Forms",
+  guide: "Receptionist Guide",
   "audit-log": "Audit Log",
   settings: "Settings",
 }

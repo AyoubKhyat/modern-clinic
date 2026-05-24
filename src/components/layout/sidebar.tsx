@@ -39,6 +39,7 @@ import {
   Repeat,
   ShieldAlert,
   PieChart,
+  BookOpen,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -86,6 +87,7 @@ const navItems: NavItem[] = [
   { labelKey: "nav.users", label: "Staff", href: "/users", icon: UserCog, roles: ["admin"] },
   { labelKey: "nav.bulk_notify", label: "Notifications", href: "/bulk-notify", icon: Bell, roles: ["admin"] },
   { labelKey: "nav.waiting_room", label: "Waiting Room", href: "/waiting-room", icon: Monitor, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.guide", label: "Guide", href: "/guide", icon: BookOpen, roles: ["admin", "receptionist"] },
   { labelKey: "nav.rooms", label: "Rooms", href: "/rooms", icon: DoorOpen, roles: ["admin", "receptionist"] },
   { labelKey: "nav.tasks", label: "Task Board", href: "/tasks", icon: ListTodo, roles: ["admin", "doctor", "receptionist"] },
   { labelKey: "nav.referral_tracking", label: "Referrals", href: "/referral-tracking", icon: ArrowRightLeft, roles: ["admin", "doctor"] },

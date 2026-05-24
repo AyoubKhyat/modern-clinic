@@ -35,6 +35,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.recurring_appointments": "Recurring",
     "nav.budgeting": "Budgeting",
     "nav.consent_forms": "Consents",
+    "nav.guide": "Guide",
     "nav.logout": "Log out",
 
     "dashboard.greeting_morning": "Good morning",
@@ -145,6 +146,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.recurring_appointments": "Récurrents",
     "nav.budgeting": "Budget",
     "nav.consent_forms": "Consentements",
+    "nav.guide": "Guide",
     "nav.logout": "Déconnexion",
 
     "dashboard.greeting_morning": "Bonjour",
@@ -255,6 +257,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.recurring_appointments": "المتكررة",
     "nav.budgeting": "الميزانية",
     "nav.consent_forms": "الموافقات",
+    "nav.guide": "الدليل",
     "nav.logout": "تسجيل الخروج",
 
     "dashboard.greeting_morning": "صباح الخير",
