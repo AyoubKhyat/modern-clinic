@@ -363,6 +363,81 @@ async function initDatabase() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS certificates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER NOT NULL,
+      visit_id INTEGER,
+      type TEXT NOT NULL DEFAULT 'medical',
+      diagnosis TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS treatment_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'active',
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS treatment_plan_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'pending',
+      due_date TEXT,
+      completed_at TEXT,
+      order_num INTEGER DEFAULT 0,
+      FOREIGN KEY (plan_id) REFERENCES treatment_plans(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id INTEGER NOT NULL,
+      receiver_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (receiver_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS surveys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      visit_id INTEGER,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER,
+      rating INTEGER NOT NULL,
+      feedback TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (visit_id) REFERENCES visits(id),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id)
+    )
+  `);
+
   // Add insurance columns to patients if missing
   try { db.run("ALTER TABLE patients ADD COLUMN insurance_provider TEXT"); } catch {}
   try { db.run("ALTER TABLE patients ADD COLUMN insurance_number TEXT"); } catch {}
@@ -1678,6 +1753,334 @@ app.get('/api/analytics/doctor-performance', authenticate, (req, res) => {
     };
   });
   res.json(result);
+});
+
+// ── User/Staff Management ────────────────────────────────────────────────────
+
+app.get('/api/users', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const role = req.query.role;
+  const status = req.query.status;
+  let where = [], params = [];
+  if (role) { where.push('role = ?'); params.push(role); }
+  if (status === 'active') { where.push('is_active = 1'); }
+  if (status === 'inactive') { where.push('is_active = 0'); }
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = getAll(`SELECT id, name, email, role, avatar, is_active, specialty, phone, license_number, hire_date FROM users ${w} ORDER BY name`, params);
+  res.json(rows);
+});
+
+app.post('/api/users', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { name, email, password, role, specialty, phone, license_number, hire_date } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ message: 'Name, email, and password are required' });
+  const existing = getOne('SELECT id FROM users WHERE email = ?', [email]);
+  if (existing) return res.status(409).json({ message: 'Email already exists' });
+  const hash = bcrypt.hashSync(password, 10);
+  const id = runSql('INSERT INTO users (name, email, password, role, specialty, phone, license_number, hire_date) VALUES (?,?,?,?,?,?,?,?)',
+    [name, email, hash, role || 'doctor', specialty || null, phone || null, license_number || null, hire_date || null]);
+  audit(req, 'create', 'user', id, `${name} (${role || 'doctor'})`);
+  res.status(201).json({ id, name, email, role: role || 'doctor' });
+});
+
+app.put('/api/users/:id', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { name, email, role, specialty, phone, license_number, hire_date, is_active } = req.body;
+  const updates = [], params = [];
+  if (name !== undefined) { updates.push('name = ?'); params.push(name); }
+  if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+  if (role !== undefined) { updates.push('role = ?'); params.push(role); }
+  if (specialty !== undefined) { updates.push('specialty = ?'); params.push(specialty); }
+  if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+  if (license_number !== undefined) { updates.push('license_number = ?'); params.push(license_number); }
+  if (hire_date !== undefined) { updates.push('hire_date = ?'); params.push(hire_date); }
+  if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active ? 1 : 0); }
+  if (updates.length === 0) return res.status(400).json({ message: 'Nothing to update' });
+  params.push(req.params.id);
+  runSql(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+  const user = getOne('SELECT id, name, email, role, is_active, specialty, phone, license_number, hire_date FROM users WHERE id = ?', [req.params.id]);
+  audit(req, 'update', 'user', Number(req.params.id), `Updated ${user?.name}`);
+  res.json(user);
+});
+
+app.patch('/api/users/:id/reset-password', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ message: 'Password required' });
+  const hash = bcrypt.hashSync(password, 10);
+  runSql('UPDATE users SET password = ? WHERE id = ?', [hash, req.params.id]);
+  audit(req, 'reset_password', 'user', Number(req.params.id), 'Password reset by admin');
+  res.json({ message: 'Password reset successfully' });
+});
+
+// ── Medical History Timeline ─────────────────────────────────────────────────
+
+app.get('/api/patients/:id/timeline', authenticate, (req, res) => {
+  const pid = req.params.id;
+  const events = [];
+
+  const visits = getAll('SELECT v.id, v.chief_complaint, v.diagnosis, v.status, v.created_at, u.name as doctor_name FROM visits v LEFT JOIN users u ON v.doctor_id = u.id WHERE v.patient_id = ? ORDER BY v.created_at DESC', [pid]);
+  visits.forEach(v => events.push({ type: 'visit', id: v.id, title: v.chief_complaint || 'Visit', detail: v.diagnosis, status: v.status, doctor: v.doctor_name, date: v.created_at }));
+
+  const appointments = getAll('SELECT a.id, a.type, a.reason, a.status, a.scheduled_at, u.name as doctor_name FROM appointments a LEFT JOIN users u ON a.doctor_id = u.id WHERE a.patient_id = ? ORDER BY a.scheduled_at DESC', [pid]);
+  appointments.forEach(a => events.push({ type: 'appointment', id: a.id, title: a.reason || a.type, detail: a.type, status: a.status, doctor: a.doctor_name, date: a.scheduled_at }));
+
+  const prescriptions = getAll('SELECT p.id, p.notes, p.is_active, p.created_at, u.name as doctor_name FROM prescriptions p LEFT JOIN users u ON p.doctor_id = u.id WHERE p.patient_id = ? ORDER BY p.created_at DESC', [pid]);
+  prescriptions.forEach(p => events.push({ type: 'prescription', id: p.id, title: 'Prescription', detail: p.notes, status: p.is_active ? 'active' : 'inactive', doctor: p.doctor_name, date: p.created_at }));
+
+  const labs = getAll('SELECT l.id, l.test_name, l.status, l.result, l.created_at, u.name as doctor_name FROM lab_orders l LEFT JOIN users u ON l.doctor_id = u.id WHERE l.patient_id = ? ORDER BY l.created_at DESC', [pid]);
+  labs.forEach(l => events.push({ type: 'lab', id: l.id, title: l.test_name, detail: l.result, status: l.status, doctor: l.doctor_name, date: l.created_at }));
+
+  const vaccinations = getAll('SELECT v.id, v.vaccine_name, v.dose_number, v.administered_at, u.name as administered_by_name FROM vaccinations v LEFT JOIN users u ON v.administered_by = u.id WHERE v.patient_id = ? ORDER BY v.administered_at DESC', [pid]);
+  vaccinations.forEach(v => events.push({ type: 'vaccination', id: v.id, title: `${v.vaccine_name} (Dose ${v.dose_number})`, detail: null, status: 'administered', doctor: v.administered_by_name, date: v.administered_at }));
+
+  const referrals = getAll('SELECT r.id, r.reason, r.status, r.priority, r.created_at, u.name as doctor_name FROM referrals r LEFT JOIN users u ON r.referring_doctor_id = u.id WHERE r.patient_id = ? ORDER BY r.created_at DESC', [pid]);
+  referrals.forEach(r => events.push({ type: 'referral', id: r.id, title: r.reason, detail: `Priority: ${r.priority}`, status: r.status, doctor: r.doctor_name, date: r.created_at }));
+
+  const payments = getAll('SELECT id, amount, payment_type, status, paid_at, created_at FROM payments WHERE patient_id = ? ORDER BY created_at DESC', [pid]);
+  payments.forEach(p => events.push({ type: 'payment', id: p.id, title: `${p.amount} MAD - ${p.payment_type}`, detail: null, status: p.status, doctor: null, date: p.paid_at || p.created_at }));
+
+  events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  res.json(events);
+});
+
+// ── Medical Certificates ─────────────────────────────────────────────────────
+
+app.get('/api/certificates', authenticate, (req, res) => {
+  const patientId = req.query.patient_id;
+  let where = [], params = [];
+  if (patientId) { where.push('c.patient_id = ?'); params.push(patientId); }
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = getAll(`SELECT c.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM certificates c LEFT JOIN patients p ON c.patient_id = p.id LEFT JOIN users u ON c.doctor_id = u.id ${w} ORDER BY c.created_at DESC`, params);
+  res.json(rows);
+});
+
+app.get('/api/certificates/:id', authenticate, (req, res) => {
+  const cert = getOne("SELECT c.*, p.first_name || ' ' || p.last_name as patient_name, p.date_of_birth, p.phone, u.name as doctor_name, u.specialty as doctor_specialty, u.license_number FROM certificates c LEFT JOIN patients p ON c.patient_id = p.id LEFT JOIN users u ON c.doctor_id = u.id WHERE c.id = ?", [req.params.id]);
+  if (!cert) return res.status(404).json({ message: 'Not found' });
+  res.json(cert);
+});
+
+app.post('/api/certificates', authenticate, (req, res) => {
+  const { patient_id, visit_id, type, diagnosis, start_date, end_date, notes } = req.body;
+  const id = runSql('INSERT INTO certificates (patient_id, doctor_id, visit_id, type, diagnosis, start_date, end_date, notes) VALUES (?,?,?,?,?,?,?,?)',
+    [patient_id, req.user.id, visit_id || null, type || 'medical', diagnosis || null, start_date || null, end_date || null, notes || null]);
+  audit(req, 'create', 'certificate', id, `${type} for patient #${patient_id}`);
+  res.status(201).json({ id, patient_id, type, created_at: new Date().toISOString() });
+});
+
+app.delete('/api/certificates/:id', authenticate, (req, res) => {
+  runSql('DELETE FROM certificates WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Deleted' });
+});
+
+// ── Treatment Plans ──────────────────────────────────────────────────────────
+
+app.get('/api/treatment-plans', authenticate, (req, res) => {
+  const patientId = req.query.patient_id;
+  let where = [], params = [];
+  if (patientId) { where.push('t.patient_id = ?'); params.push(patientId); }
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = getAll(`SELECT t.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM treatment_plans t LEFT JOIN patients p ON t.patient_id = p.id LEFT JOIN users u ON t.doctor_id = u.id ${w} ORDER BY t.created_at DESC`, params);
+  rows.forEach(plan => {
+    plan.steps = getAll('SELECT * FROM treatment_plan_steps WHERE plan_id = ? ORDER BY order_num', [plan.id]);
+  });
+  res.json(rows);
+});
+
+app.get('/api/treatment-plans/:id', authenticate, (req, res) => {
+  const plan = getOne("SELECT t.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM treatment_plans t LEFT JOIN patients p ON t.patient_id = p.id LEFT JOIN users u ON t.doctor_id = u.id WHERE t.id = ?", [req.params.id]);
+  if (!plan) return res.status(404).json({ message: 'Not found' });
+  plan.steps = getAll('SELECT * FROM treatment_plan_steps WHERE plan_id = ? ORDER BY order_num', [plan.id]);
+  res.json(plan);
+});
+
+app.post('/api/treatment-plans', authenticate, (req, res) => {
+  const { patient_id, title, description, start_date, end_date, steps } = req.body;
+  const id = runSql('INSERT INTO treatment_plans (patient_id, doctor_id, title, description, start_date, end_date) VALUES (?,?,?,?,?,?)',
+    [patient_id, req.user.id, title, description || null, start_date || null, end_date || null]);
+  if (steps && Array.isArray(steps)) {
+    steps.forEach((step, i) => {
+      runSql('INSERT INTO treatment_plan_steps (plan_id, title, description, due_date, order_num) VALUES (?,?,?,?,?)',
+        [id, step.title, step.description || null, step.due_date || null, i]);
+    });
+  }
+  audit(req, 'create', 'treatment_plan', id, title);
+  const plan = getOne('SELECT * FROM treatment_plans WHERE id = ?', [id]);
+  plan.steps = getAll('SELECT * FROM treatment_plan_steps WHERE plan_id = ? ORDER BY order_num', [id]);
+  res.status(201).json(plan);
+});
+
+app.put('/api/treatment-plans/:id', authenticate, (req, res) => {
+  const { title, description, status, start_date, end_date } = req.body;
+  const updates = [], params = [];
+  if (title !== undefined) { updates.push('title = ?'); params.push(title); }
+  if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+  if (status !== undefined) { updates.push('status = ?'); params.push(status); }
+  if (start_date !== undefined) { updates.push('start_date = ?'); params.push(start_date); }
+  if (end_date !== undefined) { updates.push('end_date = ?'); params.push(end_date); }
+  if (updates.length === 0) return res.status(400).json({ message: 'Nothing to update' });
+  params.push(req.params.id);
+  runSql(`UPDATE treatment_plans SET ${updates.join(', ')} WHERE id = ?`, params);
+  const plan = getOne('SELECT * FROM treatment_plans WHERE id = ?', [req.params.id]);
+  plan.steps = getAll('SELECT * FROM treatment_plan_steps WHERE plan_id = ? ORDER BY order_num', [plan.id]);
+  res.json(plan);
+});
+
+app.post('/api/treatment-plans/:id/steps', authenticate, (req, res) => {
+  const { title, description, due_date } = req.body;
+  const maxOrder = getOne('SELECT MAX(order_num) as m FROM treatment_plan_steps WHERE plan_id = ?', [req.params.id]);
+  const order = (maxOrder?.m ?? -1) + 1;
+  const id = runSql('INSERT INTO treatment_plan_steps (plan_id, title, description, due_date, order_num) VALUES (?,?,?,?,?)',
+    [req.params.id, title, description || null, due_date || null, order]);
+  res.status(201).json({ id, plan_id: Number(req.params.id), title, status: 'pending', order_num: order });
+});
+
+app.patch('/api/treatment-plan-steps/:id', authenticate, (req, res) => {
+  const { status, title, description, due_date } = req.body;
+  const updates = [], params = [];
+  if (status !== undefined) {
+    updates.push('status = ?'); params.push(status);
+    if (status === 'completed') { updates.push("completed_at = datetime('now')"); }
+  }
+  if (title !== undefined) { updates.push('title = ?'); params.push(title); }
+  if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+  if (due_date !== undefined) { updates.push('due_date = ?'); params.push(due_date); }
+  params.push(req.params.id);
+  runSql(`UPDATE treatment_plan_steps SET ${updates.join(', ')} WHERE id = ?`, params);
+  const step = getOne('SELECT * FROM treatment_plan_steps WHERE id = ?', [req.params.id]);
+  res.json(step);
+});
+
+app.delete('/api/treatment-plan-steps/:id', authenticate, (req, res) => {
+  runSql('DELETE FROM treatment_plan_steps WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Deleted' });
+});
+
+// ── Internal Staff Chat ──────────────────────────────────────────────────────
+
+app.get('/api/messages/conversations', authenticate, (req, res) => {
+  const userId = req.user.id;
+  const convos = getAll(`
+    SELECT u.id, u.name, u.role, u.avatar,
+      (SELECT content FROM messages WHERE (sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id) ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM messages WHERE (sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id) ORDER BY created_at DESC LIMIT 1) as last_message_at,
+      (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0) as unread_count
+    FROM users u WHERE u.id != ? AND u.is_active = 1
+    ORDER BY last_message_at DESC NULLS LAST, u.name
+  `, [userId, userId, userId, userId, userId, userId]);
+  res.json(convos);
+});
+
+app.get('/api/messages/:userId', authenticate, (req, res) => {
+  const myId = req.user.id;
+  const otherId = req.params.userId;
+  const messages = getAll('SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY created_at ASC', [myId, otherId, otherId, myId]);
+  runSql('UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0', [otherId, myId]);
+  res.json(messages);
+});
+
+app.post('/api/messages', authenticate, (req, res) => {
+  const { receiver_id, content } = req.body;
+  if (!receiver_id || !content) return res.status(400).json({ message: 'Receiver and content required' });
+  const id = runSql('INSERT INTO messages (sender_id, receiver_id, content) VALUES (?,?,?)',
+    [req.user.id, receiver_id, content]);
+  const msg = getOne('SELECT * FROM messages WHERE id = ?', [id]);
+  res.status(201).json(msg);
+});
+
+app.get('/api/messages/unread/count', authenticate, (req, res) => {
+  const row = getOne('SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0', [req.user.id]);
+  res.json({ count: row?.count || 0 });
+});
+
+// ── Patient Satisfaction Surveys ─────────────────────────────────────────────
+
+app.get('/api/surveys', authenticate, (req, res) => {
+  const patientId = req.query.patient_id;
+  const doctorId = req.query.doctor_id;
+  let where = [], params = [];
+  if (patientId) { where.push('s.patient_id = ?'); params.push(patientId); }
+  if (doctorId) { where.push('s.doctor_id = ?'); params.push(doctorId); }
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = getAll(`SELECT s.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM surveys s LEFT JOIN patients p ON s.patient_id = p.id LEFT JOIN users u ON s.doctor_id = u.id ${w} ORDER BY s.created_at DESC`, params);
+  res.json(rows);
+});
+
+app.post('/api/surveys', authenticate, (req, res) => {
+  const { visit_id, patient_id, doctor_id, rating, feedback } = req.body;
+  if (!patient_id || !rating) return res.status(400).json({ message: 'Patient and rating required' });
+  const id = runSql('INSERT INTO surveys (visit_id, patient_id, doctor_id, rating, feedback) VALUES (?,?,?,?,?)',
+    [visit_id || null, patient_id, doctor_id || null, rating, feedback || null]);
+  res.status(201).json({ id, patient_id, rating, created_at: new Date().toISOString() });
+});
+
+app.get('/api/surveys/analytics', authenticate, (req, res) => {
+  const total = getOne('SELECT COUNT(*) as count FROM surveys', []);
+  const avg = getOne('SELECT AVG(rating) as avg_rating FROM surveys', []);
+  const distribution = getAll('SELECT rating, COUNT(*) as count FROM surveys GROUP BY rating ORDER BY rating', []);
+  const byDoctor = getAll("SELECT u.name as doctor_name, AVG(s.rating) as avg_rating, COUNT(*) as count FROM surveys s JOIN users u ON s.doctor_id = u.id GROUP BY s.doctor_id ORDER BY avg_rating DESC", []);
+  const recent = getAll("SELECT s.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM surveys s LEFT JOIN patients p ON s.patient_id = p.id LEFT JOIN users u ON s.doctor_id = u.id ORDER BY s.created_at DESC LIMIT 10", []);
+  res.json({
+    total: total?.count || 0,
+    avg_rating: avg?.avg_rating ? Math.round(avg.avg_rating * 10) / 10 : 0,
+    distribution,
+    by_doctor: byDoctor,
+    recent,
+  });
+});
+
+// ── Advanced Global Search ───────────────────────────────────────────────────
+
+app.get('/api/search', authenticate, (req, res) => {
+  const q = req.query.q;
+  if (!q || q.length < 2) return res.json({ patients: [], appointments: [], visits: [], payments: [] });
+  const like = `%${q}%`;
+
+  const patients = getAll("SELECT id, first_name, last_name, phone, email FROM patients WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ? LIMIT 10", [like, like, like, like]);
+  const appointments = getAll("SELECT a.id, a.scheduled_at, a.status, a.type, a.reason, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id LEFT JOIN users u ON a.doctor_id = u.id WHERE p.first_name LIKE ? OR p.last_name LIKE ? OR a.reason LIKE ? LIMIT 10", [like, like, like]);
+  const visits = getAll("SELECT v.id, v.chief_complaint, v.diagnosis, v.status, v.created_at, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name FROM visits v LEFT JOIN patients p ON v.patient_id = p.id LEFT JOIN users u ON v.doctor_id = u.id WHERE v.chief_complaint LIKE ? OR v.diagnosis LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? LIMIT 10", [like, like, like, like]);
+  const payments = getAll("SELECT pay.id, pay.amount, pay.status, pay.payment_type, pay.created_at, p.first_name || ' ' || p.last_name as patient_name FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id WHERE p.first_name LIKE ? OR p.last_name LIKE ? OR pay.description LIKE ? LIMIT 10", [like, like, like]);
+
+  res.json({ patients, appointments, visits, payments });
+});
+
+// ── CSV Data Import ──────────────────────────────────────────────────────────
+
+app.post('/api/import/patients', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { rows } = req.body;
+  if (!rows || !Array.isArray(rows)) return res.status(400).json({ message: 'rows array required' });
+  let imported = 0, skipped = 0;
+  for (const row of rows) {
+    try {
+      if (!row.first_name || !row.last_name || !row.phone) { skipped++; continue; }
+      runSql('INSERT INTO patients (first_name, last_name, date_of_birth, gender, phone, email, address, blood_type, allergies, notes) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [row.first_name, row.last_name, row.date_of_birth || null, row.gender || null, row.phone, row.email || null, row.address || null, row.blood_type || null, row.allergies || null, row.notes || null]);
+      imported++;
+    } catch { skipped++; }
+  }
+  audit(req, 'import', 'patients', null, `Imported ${imported}, skipped ${skipped}`);
+  autoSave();
+  res.json({ imported, skipped, total: rows.length });
+});
+
+app.post('/api/import/appointments', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { rows } = req.body;
+  if (!rows || !Array.isArray(rows)) return res.status(400).json({ message: 'rows array required' });
+  let imported = 0, skipped = 0;
+  for (const row of rows) {
+    try {
+      if (!row.patient_id || !row.scheduled_at) { skipped++; continue; }
+      runSql('INSERT INTO appointments (patient_id, doctor_id, scheduled_at, duration_minutes, type, reason, status) VALUES (?,?,?,?,?,?,?)',
+        [row.patient_id, row.doctor_id || null, row.scheduled_at, row.duration_minutes || 30, row.type || 'consultation', row.reason || null, row.status || 'scheduled']);
+      imported++;
+    } catch { skipped++; }
+  }
+  audit(req, 'import', 'appointments', null, `Imported ${imported}, skipped ${skipped}`);
+  autoSave();
+  res.json({ imported, skipped, total: rows.length });
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────

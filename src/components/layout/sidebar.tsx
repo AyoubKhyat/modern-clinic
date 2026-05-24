@@ -24,6 +24,10 @@ import {
   CalendarOff,
   Bell,
   Monitor,
+  UserCog,
+  CalendarDays,
+  MessageSquare,
+  Star,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -63,8 +67,12 @@ const navItems: NavItem[] = [
   { labelKey: "nav.analytics", label: "Analytics", href: "/analytics", icon: BarChart3, roles: ["admin"] },
   { labelKey: "nav.reports", label: "Reports", href: "/reports", icon: Activity, roles: ["admin"] },
   { labelKey: "nav.staff_scheduling", label: "Staff Schedule", href: "/staff-scheduling", icon: CalendarClock, roles: ["admin"] },
+  { labelKey: "nav.calendar", label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["admin", "doctor", "receptionist"] },
   { labelKey: "nav.expenses", label: "Expenses", href: "/expenses", icon: Receipt, roles: ["admin", "accountant"] },
   { labelKey: "nav.leaves", label: "Leave Mgmt", href: "/leaves", icon: CalendarOff, roles: ["admin"] },
+  { labelKey: "nav.surveys", label: "Surveys", href: "/surveys", icon: Star, roles: ["admin"] },
+  { labelKey: "nav.chat", label: "Chat", href: "/chat", icon: MessageSquare, roles: ["admin", "doctor", "receptionist", "accountant"] },
+  { labelKey: "nav.users", label: "Staff", href: "/users", icon: UserCog, roles: ["admin"] },
   { labelKey: "nav.bulk_notify", label: "Notifications", href: "/bulk-notify", icon: Bell, roles: ["admin"] },
   { labelKey: "nav.waiting_room", label: "Waiting Room", href: "/waiting-room", icon: Monitor, roles: ["admin", "receptionist"] },
   { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },

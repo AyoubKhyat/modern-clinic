@@ -23,6 +23,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.leaves": "Leave Mgmt",
     "nav.bulk_notify": "Notifications",
     "nav.waiting_room": "Waiting Room",
+    "nav.calendar": "Calendar",
+    "nav.chat": "Chat",
+    "nav.users": "Staff",
+    "nav.surveys": "Surveys",
     "nav.logout": "Log out",
 
     "dashboard.greeting_morning": "Good morning",
@@ -121,6 +125,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.leaves": "Congés",
     "nav.bulk_notify": "Notifications",
     "nav.waiting_room": "Salle d'attente",
+    "nav.calendar": "Calendrier",
+    "nav.chat": "Messagerie",
+    "nav.users": "Personnel",
+    "nav.surveys": "Enquêtes",
     "nav.logout": "Déconnexion",
 
     "dashboard.greeting_morning": "Bonjour",
@@ -219,6 +227,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.leaves": "الإجازات",
     "nav.bulk_notify": "الإشعارات",
     "nav.waiting_room": "غرفة الانتظار",
+    "nav.calendar": "التقويم",
+    "nav.chat": "المحادثات",
+    "nav.users": "الموظفون",
+    "nav.surveys": "الاستبيانات",
     "nav.logout": "تسجيل الخروج",
 
     "dashboard.greeting_morning": "صباح الخير",

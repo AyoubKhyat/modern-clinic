@@ -51,6 +51,10 @@ const routeLabels: Record<string, string> = {
   "waiting-room": "Waiting Room",
   "doctor-performance": "Doctor Performance",
   portal: "Patient Portal",
+  calendar: "Calendar",
+  chat: "Chat",
+  users: "Staff Management",
+  surveys: "Surveys",
   "audit-log": "Audit Log",
   settings: "Settings",
 }

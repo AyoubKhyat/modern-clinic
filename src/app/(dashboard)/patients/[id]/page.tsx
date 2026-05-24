@@ -18,6 +18,7 @@ import {
   Stethoscope,
   CreditCard,
   Clock,
+  FileText,
   FileUp,
   File,
   Trash2,
@@ -26,8 +27,9 @@ import {
   Syringe,
   ArrowRightLeft,
   Plus,
+  ClipboardList,
 } from "lucide-react"
-import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, documentsApi, labOrdersApi, vaccinationsApi, referralsApi } from "@/lib/api"
+import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, documentsApi, labOrdersApi, vaccinationsApi, referralsApi, timelineApi } from "@/lib/api"
 import type { Patient, Appointment, Visit, Payment } from "@/types"
 import { PatientForm } from "@/components/patients/patient-form"
 import { Button } from "@/components/ui/button"
@@ -53,6 +55,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
+import { CertificatesTab } from "./certificates-tab"
+import { TreatmentPlansTab } from "./treatment-plans-tab"
 
 const DOCTORS = [
   { value: "2", label: "Dr. Amina Tazi" },
@@ -152,8 +156,11 @@ export default function PatientDetailPage({
 
       <Tabs defaultValue="overview">
         <TabsList variant="line">
+          <TabsTrigger value="timeline">
+            <Clock className="size-4" />
+            Timeline
+          </TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
@@ -170,13 +177,21 @@ export default function PatientDetailPage({
             <ArrowRightLeft className="size-4" />
             Referrals
           </TabsTrigger>
+          <TabsTrigger value="certificates">
+            <FileText className="size-4" />
+            Certificates
+          </TabsTrigger>
+          <TabsTrigger value="treatment-plans">
+            <ClipboardList className="size-4" />
+            Treatment Plans
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="pt-4">
-          <OverviewTab patient={patient} />
-        </TabsContent>
         <TabsContent value="timeline" className="pt-4">
           <TimelineTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="overview" className="pt-4">
+          <OverviewTab patient={patient} />
         </TabsContent>
         <TabsContent value="appointments" className="pt-4">
           <AppointmentsTab patientId={patient.id} />
@@ -198,6 +213,12 @@ export default function PatientDetailPage({
         </TabsContent>
         <TabsContent value="referrals" className="pt-4">
           <ReferralsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="certificates" className="pt-4">
+          <CertificatesTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="treatment-plans" className="pt-4">
+          <TreatmentPlansTab patientId={patient.id} />
         </TabsContent>
       </Tabs>
 
@@ -767,74 +788,199 @@ function TabEmpty({ label }: { label: string }) {
   )
 }
 
+interface TimelineEvent {
+  type: "visit" | "appointment" | "prescription" | "lab" | "vaccination" | "referral" | "payment"
+  id: number
+  title: string
+  detail: string
+  status: string
+  doctor: string
+  date: string
+}
+
+const timelineIconMap: Record<TimelineEvent["type"], typeof Calendar> = {
+  visit: Stethoscope,
+  appointment: Calendar,
+  prescription: FileText,
+  lab: FlaskConical,
+  vaccination: Syringe,
+  referral: ArrowRightLeft,
+  payment: CreditCard,
+}
+
+const timelineBadgeColor: Record<TimelineEvent["type"], string> = {
+  visit: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400",
+  appointment: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  prescription: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  lab: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  vaccination: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+  referral: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400",
+  payment: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+}
+
+const timelineDotColor: Record<TimelineEvent["type"], string> = {
+  visit: "bg-teal-500",
+  appointment: "bg-blue-500",
+  prescription: "bg-violet-500",
+  lab: "bg-amber-500",
+  vaccination: "bg-emerald-500",
+  referral: "bg-pink-500",
+  payment: "bg-indigo-500",
+}
+
+const timelineFilterLabels: { value: TimelineEvent["type"] | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "visit", label: "Visits" },
+  { value: "appointment", label: "Appointments" },
+  { value: "prescription", label: "Prescriptions" },
+  { value: "lab", label: "Lab" },
+  { value: "vaccination", label: "Vaccinations" },
+  { value: "referral", label: "Referrals" },
+  { value: "payment", label: "Payments" },
+]
+
 function TimelineTab({ patientId }: { patientId: number }) {
-  const [events, setEvents] = useState<{ type: string; date: string; title: string; detail: string }[]>([])
+  const [events, setEvents] = useState<TimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<TimelineEvent["type"] | "all">("all")
+  const { toast } = useToast()
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       try {
-        const [aptsRes, visitsRes, paysRes] = await Promise.all([
-          appointmentsApi.list({ patient_id: patientId, per_page: 50 }),
-          visitsApi.list({ patient_id: patientId, per_page: 50 }),
-          paymentsApi.list({ patient_id: patientId, per_page: 50 }),
-        ])
-        const items: { type: string; date: string; title: string; detail: string }[] = []
-        for (const a of aptsRes.data.data ?? []) {
-          items.push({ type: "appointment", date: a.scheduled_at || a.created_at, title: `Appointment — ${a.type}`, detail: a.reason || a.status })
-        }
-        for (const v of visitsRes.data.data ?? []) {
-          items.push({ type: "visit", date: v.created_at, title: `Visit — ${v.status}`, detail: v.chief_complaint || v.diagnosis || "" })
-        }
-        for (const p of paysRes.data.data ?? []) {
-          items.push({ type: "payment", date: p.created_at, title: `Payment — ${p.amount} MAD`, detail: `${p.payment_type} (${p.status})` })
-        }
-        items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        setEvents(items)
-      } catch {}
-      setLoading(false)
+        const { data } = await timelineApi.get(patientId)
+        setEvents(data.data ?? data ?? [])
+      } catch {
+        toast("Failed to load timeline", "error")
+      } finally {
+        setLoading(false)
+      }
     })()
-  }, [patientId])
+  }, [patientId, toast])
 
-  if (loading) return <TabSkeleton />
-  if (events.length === 0) return <TabEmpty label="No activity recorded for this patient." />
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-24 rounded-full" />
+          ))}
+        </div>
+        <div className="relative space-y-4 pl-10">
+          <div className="absolute left-4 top-2 bottom-2 w-px bg-border" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="relative">
+              <Skeleton className="absolute -left-6 top-4 size-3 rounded-full" />
+              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+                <CardContent className="flex flex-col gap-3 py-4">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                  <Skeleton className="h-3 w-48" />
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
-  const iconMap: Record<string, typeof Calendar> = { appointment: Calendar, visit: Stethoscope, payment: CreditCard }
-  const colorMap: Record<string, string> = {
-    appointment: "bg-blue-500",
-    visit: "bg-teal-500",
-    payment: "bg-emerald-500",
+  const filtered = filter === "all" ? events : events.filter((e) => e.type === filter)
+
+  if (events.length === 0) {
+    return <TabEmpty label="No activity recorded for this patient." />
   }
 
   return (
-    <div className="relative space-y-4 pl-8">
-      <div className="absolute left-3 top-2 bottom-2 w-px bg-gradient-to-b from-teal-400/50 via-border to-transparent" />
-      {events.map((event, i) => {
-        const Icon = iconMap[event.type] ?? Clock
-        return (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.04 }}
-            className="relative"
+    <div className="flex flex-col gap-4">
+      {/* Filter buttons */}
+      <div className="flex flex-wrap gap-2">
+        {timelineFilterLabels.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === f.value
+                ? "bg-teal-600 text-white shadow-sm dark:bg-teal-500"
+                : "bg-muted/60 text-muted-foreground hover:bg-muted"
+            }`}
           >
-            <div className={`absolute -left-5 top-2 size-2.5 rounded-full ring-2 ring-background ${colorMap[event.type] ?? "bg-gray-400"}`} />
-            <div className="rounded-lg bg-muted/30 p-3">
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-                  <Icon className="size-3.5 text-muted-foreground" />
-                  {event.title}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {format(parseISO(event.date), "MMM d, yyyy")}
-                </span>
-              </div>
-              {event.detail && <p className="mt-1 text-xs text-muted-foreground">{event.detail}</p>}
-            </div>
-          </motion.div>
-        )
-      })}
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <TabEmpty label="No events match the selected filter." />
+      ) : (
+        <div className="relative space-y-4 pl-10">
+          {/* Vertical timeline line */}
+          <div className="absolute left-4 top-2 bottom-2 w-px bg-gradient-to-b from-teal-400/60 via-border to-transparent" />
+
+          {filtered.map((event, i) => {
+            const Icon = timelineIconMap[event.type] ?? Clock
+            return (
+              <motion.div
+                key={`${event.type}-${event.id}`}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05, duration: 0.3 }}
+                className="relative"
+              >
+                {/* Timeline dot */}
+                <div
+                  className={`absolute -left-6 top-4 size-3 rounded-full ring-[3px] ring-background ${timelineDotColor[event.type] ?? "bg-gray-400"}`}
+                />
+
+                <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+                  <CardContent className="flex flex-col gap-2 py-4">
+                    {/* Header: title + type badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="inline-flex items-center gap-2 text-sm font-medium">
+                        <Icon className="size-4 shrink-0 text-muted-foreground" />
+                        {event.title}
+                      </span>
+                      <span
+                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                          timelineBadgeColor[event.type] ?? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+                        }`}
+                      >
+                        {event.type}
+                      </span>
+                    </div>
+
+                    {/* Detail */}
+                    {event.detail && (
+                      <p className="text-sm text-muted-foreground">{event.detail}</p>
+                    )}
+
+                    {/* Footer: doctor, date, status */}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      {event.doctor && (
+                        <span className="inline-flex items-center gap-1">
+                          <Stethoscope className="size-3" />
+                          {event.doctor}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="size-3" />
+                        {format(parseISO(event.date), "MMM d, yyyy 'at' h:mm a")}
+                      </span>
+                      {event.status && <StatusBadge status={event.status} />}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

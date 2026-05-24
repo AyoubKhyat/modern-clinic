@@ -235,3 +235,53 @@ export const portalApi = {
 export const doctorPerformanceApi = {
   get: () => api.get('/analytics/doctor-performance'),
 };
+
+export const usersApi = {
+  list: (params?: Record<string, any>) => api.get('/users', { params }),
+  create: (data: any) => api.post('/users', data),
+  update: (id: number, data: any) => api.put(`/users/${id}`, data),
+  resetPassword: (id: number, password: string) => api.patch(`/users/${id}/reset-password`, { password }),
+};
+
+export const timelineApi = {
+  get: (patientId: number) => api.get(`/patients/${patientId}/timeline`),
+};
+
+export const certificatesApi = {
+  list: (params?: Record<string, any>) => api.get('/certificates', { params }),
+  get: (id: number) => api.get(`/certificates/${id}`),
+  create: (data: any) => api.post('/certificates', data),
+  delete: (id: number) => api.delete(`/certificates/${id}`),
+};
+
+export const treatmentPlansApi = {
+  list: (params?: Record<string, any>) => api.get('/treatment-plans', { params }),
+  get: (id: number) => api.get(`/treatment-plans/${id}`),
+  create: (data: any) => api.post('/treatment-plans', data),
+  update: (id: number, data: any) => api.put(`/treatment-plans/${id}`, data),
+  addStep: (planId: number, data: any) => api.post(`/treatment-plans/${planId}/steps`, data),
+  updateStep: (stepId: number, data: any) => api.patch(`/treatment-plan-steps/${stepId}`, data),
+  deleteStep: (stepId: number) => api.delete(`/treatment-plan-steps/${stepId}`),
+};
+
+export const messagesApi = {
+  conversations: () => api.get('/messages/conversations'),
+  get: (userId: number) => api.get(`/messages/${userId}`),
+  send: (receiverId: number, content: string) => api.post('/messages', { receiver_id: receiverId, content }),
+  unreadCount: () => api.get('/messages/unread/count'),
+};
+
+export const surveysApi = {
+  list: (params?: Record<string, any>) => api.get('/surveys', { params }),
+  create: (data: any) => api.post('/surveys', data),
+  analytics: () => api.get('/surveys/analytics'),
+};
+
+export const searchApi = {
+  global: (q: string) => api.get('/search', { params: { q } }),
+};
+
+export const importApi = {
+  patients: (rows: any[]) => api.post('/import/patients', { rows }),
+  appointments: (rows: any[]) => api.post('/import/appointments', { rows }),
+};

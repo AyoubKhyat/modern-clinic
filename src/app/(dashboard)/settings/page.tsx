@@ -20,10 +20,14 @@ import {
   Loader2,
   Lock,
   Wand2,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertCircle,
+  Table2,
 } from "lucide-react"
 import { useTheme } from "@/components/layout/theme-provider"
 import { useAuthStore } from "@/stores/auth-store"
-import { backupApi, passwordApi, seedApi } from "@/lib/api"
+import { backupApi, passwordApi, seedApi, importApi } from "@/lib/api"
 import { useI18n, localeLabels, type Locale } from "@/lib/i18n"
 import { useSidebar } from "@/app/(dashboard)/layout"
 import { useToast } from "@/components/ui/toast"
@@ -502,6 +506,7 @@ function DataTab() {
       </Card>
 
       <SeedDataCard />
+      <CsvImportCard />
     </motion.div>
   )
 }
@@ -552,6 +557,274 @@ function SeedDataCard() {
           {seeding ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
           {seeding ? "Generating..." : "Generate"}
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- CSV helpers ---
+
+const PATIENT_FIELDS = ["first_name", "last_name", "phone", "email", "gender", "date_of_birth", "address", "blood_type"] as const
+const APPOINTMENT_FIELDS = ["patient_id", "scheduled_at", "doctor_id", "duration_minutes", "type", "reason"] as const
+
+function parseCsv(text: string): { headers: string[]; rows: Record<string, string>[] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "")
+  if (lines.length === 0) return { headers: [], rows: [] }
+  const headers = lines[0].split(",").map((h) => h.trim())
+  const rows = lines.slice(1).map((line) => {
+    const values = line.split(",").map((v) => v.trim())
+    const record: Record<string, string> = {}
+    headers.forEach((h, i) => {
+      record[h] = values[i] ?? ""
+    })
+    return record
+  })
+  return { headers, rows }
+}
+
+function matchColumns(csvHeaders: string[], expectedFields: readonly string[]): Record<string, string> {
+  const mapping: Record<string, string> = {}
+  for (const field of expectedFields) {
+    const match = csvHeaders.find((h) => h.toLowerCase().replace(/\s+/g, "_") === field)
+    if (match) mapping[field] = match
+  }
+  return mapping
+}
+
+function mapRows(rows: Record<string, string>[], columnMapping: Record<string, string>): Record<string, string>[] {
+  return rows.map((row) => {
+    const mapped: Record<string, string> = {}
+    for (const [field, csvHeader] of Object.entries(columnMapping)) {
+      if (row[csvHeader] !== undefined) mapped[field] = row[csvHeader]
+    }
+    return mapped
+  })
+}
+
+function CsvImportSection({
+  title,
+  expectedFields,
+  onImport,
+}: {
+  title: string
+  expectedFields: readonly string[]
+  onImport: (rows: Record<string, string>[]) => Promise<{ imported: number; skipped: number; total: number }>
+}) {
+  const { toast } = useToast()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([])
+  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([])
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null)
+  const [error, setError] = useState("")
+
+  function reset() {
+    setCsvHeaders([])
+    setCsvRows([])
+    setColumnMapping({})
+    setResult(null)
+    setError("")
+    if (fileRef.current) fileRef.current.value = ""
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    setResult(null)
+    setError("")
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith(".csv")) {
+      setError("Please select a valid .csv file")
+      if (fileRef.current) fileRef.current.value = ""
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string
+        const { headers, rows } = parseCsv(text)
+        if (headers.length === 0 || rows.length === 0) {
+          setError("CSV file is empty or contains no data rows")
+          return
+        }
+        setCsvHeaders(headers)
+        setCsvRows(rows)
+        const mapping = matchColumns(headers, expectedFields)
+        setColumnMapping(mapping)
+      } catch {
+        setError("Failed to parse CSV file")
+      }
+    }
+    reader.onerror = () => setError("Failed to read file")
+    reader.readAsText(file)
+  }
+
+  async function handleImport() {
+    if (csvRows.length === 0) return
+    if (Object.keys(columnMapping).length === 0) {
+      toast("No columns matched. Check your CSV headers.", "error")
+      return
+    }
+
+    setImporting(true)
+    setError("")
+    try {
+      const mapped = mapRows(csvRows, columnMapping)
+      const res = await onImport(mapped)
+      setResult({ imported: res.imported, skipped: res.skipped })
+      toast(`${res.imported} imported, ${res.skipped} skipped`)
+    } catch {
+      toast(`Failed to import ${title.toLowerCase()}`, "error")
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const previewRows = csvRows.slice(0, 5)
+  const matchedCount = Object.keys(columnMapping).length
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">{title}</h4>
+        {csvRows.length > 0 && (
+          <button onClick={reset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Clear
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv"
+        onChange={handleFileSelect}
+        className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-muted/50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/80 file:cursor-pointer file:transition-colors"
+      />
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+          <AlertCircle className="size-3.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {csvRows.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="flex flex-col gap-3"
+        >
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Table2 className="size-3.5" />
+              {csvRows.length} row{csvRows.length !== 1 && "s"} detected
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-teal-600 dark:text-teal-400" />
+              {matchedCount}/{expectedFields.length} columns matched
+            </span>
+          </div>
+
+          {/* Column mapping */}
+          <div className="flex flex-wrap gap-1.5">
+            {expectedFields.map((field) => {
+              const matched = field in columnMapping
+              return (
+                <Badge
+                  key={field}
+                  variant="secondary"
+                  className={
+                    matched
+                      ? "bg-teal-500/10 text-teal-700 dark:text-teal-300"
+                      : "bg-muted/50 text-muted-foreground line-through"
+                  }
+                >
+                  {field}
+                </Badge>
+              )
+            })}
+          </div>
+
+          {/* Preview table */}
+          <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/[0.06] dark:ring-foreground/[0.04]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-foreground/[0.06] bg-muted/30 dark:border-foreground/[0.04]">
+                  {csvHeaders.map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} className="border-b border-foreground/[0.04] last:border-0">
+                    {csvHeaders.map((h) => (
+                      <td key={h} className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">
+                        {row[h] || "—"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {csvRows.length > 5 && (
+            <p className="text-xs text-muted-foreground">
+              Showing first 5 of {csvRows.length} rows
+            </p>
+          )}
+
+          {result ? (
+            <div className="flex items-center gap-2 text-sm text-teal-600 dark:text-teal-400">
+              <CheckCircle2 className="size-4" />
+              {result.imported} imported, {result.skipped} skipped
+            </div>
+          ) : (
+            <Button variant="outline" onClick={handleImport} disabled={importing} className="self-start">
+              {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {importing ? "Importing..." : `Import ${csvRows.length} row${csvRows.length !== 1 ? "s" : ""}`}
+            </Button>
+          )}
+        </motion.div>
+      )}
+    </div>
+  )
+}
+
+function CsvImportCard() {
+  return (
+    <Card className={GLASS}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <FileSpreadsheet className="size-4" />
+          Import Data
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">Import patients or appointments from CSV</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-6">
+        <CsvImportSection
+          title="Import Patients"
+          expectedFields={PATIENT_FIELDS}
+          onImport={async (rows) => {
+            const { data } = await importApi.patients(rows)
+            return data
+          }}
+        />
+        <Separator />
+        <CsvImportSection
+          title="Import Appointments"
+          expectedFields={APPOINTMENT_FIELDS}
+          onImport={async (rows) => {
+            const { data } = await importApi.appointments(rows)
+            return data
+          }}
+        />
       </CardContent>
     </Card>
   )

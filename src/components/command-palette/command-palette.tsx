@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTheme } from "@/components/layout/theme-provider"
-import { patientsApi } from "@/lib/api"
-import type { Patient } from "@/types"
+import { searchApi } from "@/lib/api"
 import {
   Search,
   Users,
+  Calendar,
   CalendarDays,
   Stethoscope,
   Pill,
@@ -19,10 +19,16 @@ import {
   CalendarPlus,
   Sun,
   Moon,
-  User,
   Loader2,
   type LucideIcon,
 } from "lucide-react"
+
+interface GlobalSearchResults {
+  patients: { id: number; first_name: string; last_name: string; phone: string; email: string }[]
+  appointments: { id: number; scheduled_at: string; status: string; type: string; reason: string; patient_name: string; doctor_name: string }[]
+  visits: { id: number; chief_complaint: string; diagnosis: string; status: string; created_at: string; patient_name: string; doctor_name: string }[]
+  payments: { id: number; amount: number; status: string; payment_type: string; created_at: string; patient_name: string }[]
+}
 
 interface Command {
   id: string
@@ -44,8 +50,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { theme, setTheme } = useTheme()
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
-  const [patientResults, setPatientResults] = useState<Patient[]>([])
-  const [searchingPatients, setSearchingPatients] = useState(false)
+  const [searchResults, setSearchResults] = useState<GlobalSearchResults | null>(null)
+  const [searching, setSearching] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -54,7 +60,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     onOpenChange(false)
     setQuery("")
     setActiveIndex(0)
-    setPatientResults([])
+    setSearchResults(null)
   }, [onOpenChange])
 
   const commands = useMemo<Command[]>(
@@ -72,17 +78,58 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     [router, theme, setTheme, close]
   )
 
-  const patientCommands: Command[] = useMemo(() =>
-    patientResults.map((p) => ({
-      id: `patient-${p.id}`,
-      label: `${p.first_name} ${p.last_name}`,
-      subtitle: [p.phone, p.blood_type].filter(Boolean).join(" · "),
-      icon: User,
-      group: "Patients",
-      action: () => { router.push(`/patients/${p.id}`); close() },
-    })),
-    [patientResults, router, close]
-  )
+  const searchCommands: Command[] = useMemo(() => {
+    if (!searchResults) return []
+    const cmds: Command[] = []
+
+    for (const p of searchResults.patients) {
+      cmds.push({
+        id: `search-patient-${p.id}`,
+        label: `${p.first_name} ${p.last_name}`,
+        subtitle: p.phone || p.email || undefined,
+        icon: Users,
+        group: "Patients",
+        action: () => { router.push(`/patients/${p.id}`); close() },
+      })
+    }
+
+    for (const a of searchResults.appointments) {
+      const date = new Date(a.scheduled_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      cmds.push({
+        id: `search-appointment-${a.id}`,
+        label: a.patient_name,
+        subtitle: `${date} · ${a.status}`,
+        icon: Calendar,
+        group: "Appointments",
+        action: () => { router.push("/appointments"); close() },
+      })
+    }
+
+    for (const v of searchResults.visits) {
+      const date = new Date(v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      cmds.push({
+        id: `search-visit-${v.id}`,
+        label: v.patient_name,
+        subtitle: `${v.diagnosis || v.chief_complaint || "—"} · ${date}`,
+        icon: Stethoscope,
+        group: "Visits",
+        action: () => { router.push(`/visits/${v.id}`); close() },
+      })
+    }
+
+    for (const pay of searchResults.payments) {
+      cmds.push({
+        id: `search-payment-${pay.id}`,
+        label: pay.patient_name,
+        subtitle: `${pay.amount} MAD · ${pay.status}`,
+        icon: CreditCard,
+        group: "Payments",
+        action: () => { router.push("/payments"); close() },
+      })
+    }
+
+    return cmds
+  }, [searchResults, router, close])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return commands
@@ -95,7 +142,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     )
   }, [commands, query])
 
-  const allItems = useMemo(() => [...patientCommands, ...filtered], [patientCommands, filtered])
+  const allItems = useMemo(() => [...searchCommands, ...filtered], [searchCommands, filtered])
 
   const grouped = useMemo(() => {
     const map = new Map<string, Command[]>()
@@ -109,7 +156,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   useEffect(() => {
     setActiveIndex(0)
-  }, [query, patientResults])
+  }, [query, searchResults])
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -122,20 +169,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   useEffect(() => {
     if (!query.trim() || query.trim().length < 2) {
-      setPatientResults([])
+      setSearchResults(null)
       return
     }
     clearTimeout(searchTimerRef.current)
     searchTimerRef.current = setTimeout(async () => {
-      setSearchingPatients(true)
+      setSearching(true)
       try {
-        const { data } = await patientsApi.search(query.trim())
-        setPatientResults(data)
+        const { data } = await searchApi.global(query.trim())
+        setSearchResults(data)
       } catch {
-        setPatientResults([])
+        setSearchResults(null)
       }
-      setSearchingPatients(false)
-    }, 250)
+      setSearching(false)
+    }, 300)
     return () => clearTimeout(searchTimerRef.current)
   }, [query])
 
@@ -187,7 +234,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             onKeyDown={handleKeyDown}
           >
             <div className="flex items-center gap-3 border-b border-border/40 px-4">
-              {searchingPatients ? (
+              {searching ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-teal-500" />
               ) : (
                 <Search className="size-4 shrink-0 text-muted-foreground/60" />
@@ -195,7 +242,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Search patients, commands..."
+                placeholder="Search patients, appointments, visits, payments..."
                 className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
