@@ -681,6 +681,123 @@ async function initDatabase() {
     db.run("INSERT INTO consent_forms (title, content, category, is_template) VALUES (?,?,?,1)", ['Data Privacy Consent', 'I consent to the collection, processing, and storage of my personal and medical data by the clinic for the purposes of medical treatment, appointment scheduling, billing, and compliance with legal obligations.\n\nI understand that my data will be handled in accordance with applicable data protection regulations.', 'privacy']);
   }
 
+  // ── New tables for features #64-#70 ──
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS insurance_claims (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      appointment_id INTEGER,
+      claim_number TEXT,
+      insurance_provider TEXT NOT NULL,
+      policy_number TEXT,
+      amount REAL NOT NULL,
+      status TEXT DEFAULT 'submitted',
+      submitted_at TEXT DEFAULT (datetime('now')),
+      processed_at TEXT,
+      decision_at TEXT,
+      paid_amount REAL,
+      rejection_reason TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (appointment_id) REFERENCES appointments(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS communication_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'call',
+      direction TEXT DEFAULT 'outgoing',
+      subject TEXT,
+      content TEXT,
+      duration_minutes INTEGER,
+      logged_by INTEGER,
+      contacted_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (logged_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS shifts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      break_minutes INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'scheduled',
+      swap_requested_by INTEGER,
+      swap_status TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES users(id),
+      FOREIGN KEY (swap_requested_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      contact_person TEXT,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      category TEXT DEFAULT 'general',
+      payment_terms TEXT,
+      notes TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS supplier_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_id INTEGER NOT NULL,
+      order_number TEXT,
+      items TEXT NOT NULL,
+      total_amount REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      ordered_at TEXT DEFAULT (datetime('now')),
+      expected_delivery TEXT,
+      delivered_at TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tv_announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT,
+      type TEXT DEFAULT 'info',
+      is_active INTEGER DEFAULT 1,
+      starts_at TEXT,
+      ends_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Seed suppliers if empty
+  const supplierCount = db.exec("SELECT COUNT(*) as c FROM suppliers")[0]?.values[0][0] || 0;
+  if (supplierCount === 0) {
+    db.run("INSERT INTO suppliers (name, contact_person, email, phone, category, payment_terms) VALUES (?,?,?,?,?,?)", ['PharmaMed', 'Hassan El Alami', 'orders@pharmamed.ma', '+212522111222', 'medication', 'Net 30']);
+    db.run("INSERT INTO suppliers (name, contact_person, email, phone, category, payment_terms) VALUES (?,?,?,?,?,?)", ['MedSupply Co', 'Karim Tazi', 'sales@medsupply.ma', '+212522333444', 'supplies', 'Net 15']);
+    db.run("INSERT INTO suppliers (name, contact_person, email, phone, category, payment_terms) VALUES (?,?,?,?,?,?)", ['MedTech Equipment', 'Fatima Benali', 'info@medtech.ma', '+212522555666', 'equipment', 'Net 60']);
+  }
+
   // Seed if empty
   const userCount = db.exec("SELECT COUNT(*) as c FROM users")[0]?.values[0][0] || 0;
   if (userCount === 0) seedData();
@@ -2789,6 +2906,276 @@ app.delete('/api/patient-consents/:id', authenticate, (req, res) => {
   db.run('DELETE FROM patient_consents WHERE id = ?', [req.params.id]);
   autoSave();
   res.json({ message: 'Deleted' });
+});
+
+// ── Insurance Claims ────────────────────────────────────────────────────────
+
+app.get('/api/insurance-claims', authenticate, (req, res) => {
+  const { patient_id, status } = req.query;
+  let sql = `SELECT ic.*, p.first_name || ' ' || p.last_name as patient_name, u.name as created_by_name
+    FROM insurance_claims ic
+    LEFT JOIN patients p ON ic.patient_id = p.id
+    LEFT JOIN users u ON ic.created_by = u.id`;
+  const params = [], conditions = [];
+  if (patient_id) { conditions.push('ic.patient_id = ?'); params.push(patient_id); }
+  if (status) { conditions.push('ic.status = ?'); params.push(status); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY ic.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/insurance-claims', authenticate, (req, res) => {
+  const { patient_id, appointment_id, claim_number, insurance_provider, policy_number, amount, notes } = req.body;
+  if (!patient_id || !insurance_provider || !amount) return res.status(400).json({ message: 'patient_id, insurance_provider, amount required' });
+  const id = runSql('INSERT INTO insurance_claims (patient_id, appointment_id, claim_number, insurance_provider, policy_number, amount, notes, created_by) VALUES (?,?,?,?,?,?,?,?)',
+    [patient_id, appointment_id || null, claim_number || null, insurance_provider, policy_number || null, amount, notes || null, req.user.id]);
+  audit(req, 'create', 'insurance_claims', id, `Claim for patient ${patient_id}: ${amount}`);
+  const claim = getOne(`SELECT ic.*, p.first_name || ' ' || p.last_name as patient_name FROM insurance_claims ic LEFT JOIN patients p ON ic.patient_id = p.id WHERE ic.id = ?`, [id]);
+  res.status(201).json({ data: claim });
+});
+
+app.patch('/api/insurance-claims/:id', authenticate, (req, res) => {
+  const { status, paid_amount, rejection_reason, notes } = req.body;
+  const now = new Date().toISOString();
+  let processed_at = null, decision_at = null;
+  if (status === 'processing') processed_at = now;
+  if (status === 'approved' || status === 'rejected' || status === 'paid') decision_at = now;
+  db.run('UPDATE insurance_claims SET status=?, paid_amount=?, rejection_reason=?, notes=?, processed_at=COALESCE(?,processed_at), decision_at=COALESCE(?,decision_at) WHERE id=?',
+    [status, paid_amount || null, rejection_reason || null, notes || null, processed_at, decision_at, req.params.id]);
+  autoSave();
+  const claim = getOne(`SELECT ic.*, p.first_name || ' ' || p.last_name as patient_name FROM insurance_claims ic LEFT JOIN patients p ON ic.patient_id = p.id WHERE ic.id = ?`, [req.params.id]);
+  res.json({ data: claim });
+});
+
+app.delete('/api/insurance-claims/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM insurance_claims WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/insurance-claims/summary', authenticate, (req, res) => {
+  const total = countSql('SELECT COUNT(*) FROM insurance_claims');
+  const submitted = countSql("SELECT COUNT(*) FROM insurance_claims WHERE status = 'submitted'");
+  const processing = countSql("SELECT COUNT(*) FROM insurance_claims WHERE status = 'processing'");
+  const approved = countSql("SELECT COUNT(*) FROM insurance_claims WHERE status = 'approved'");
+  const paid = countSql("SELECT COUNT(*) FROM insurance_claims WHERE status = 'paid'");
+  const rejected = countSql("SELECT COUNT(*) FROM insurance_claims WHERE status = 'rejected'");
+  const totalAmount = getOne("SELECT COALESCE(SUM(amount),0) as total FROM insurance_claims")?.total || 0;
+  const paidAmount = getOne("SELECT COALESCE(SUM(paid_amount),0) as total FROM insurance_claims WHERE status = 'paid'")?.total || 0;
+  res.json({ data: { total, submitted, processing, approved, paid, rejected, totalAmount, paidAmount } });
+});
+
+// ── Communication Logs ──────────────────────────────────────────────────────
+
+app.get('/api/patients/:patientId/communications', authenticate, (req, res) => {
+  const rows = getAll(`SELECT cl.*, u.name as logged_by_name FROM communication_logs cl LEFT JOIN users u ON cl.logged_by = u.id WHERE cl.patient_id = ? ORDER BY cl.contacted_at DESC`, [req.params.patientId]);
+  res.json({ data: rows });
+});
+
+app.post('/api/patients/:patientId/communications', authenticate, (req, res) => {
+  const { type, direction, subject, content, duration_minutes, contacted_at } = req.body;
+  if (!type) return res.status(400).json({ message: 'type required' });
+  const id = runSql('INSERT INTO communication_logs (patient_id, type, direction, subject, content, duration_minutes, logged_by, contacted_at) VALUES (?,?,?,?,?,?,?,?)',
+    [req.params.patientId, type, direction || 'outgoing', subject || null, content || null, duration_minutes || null, req.user.id, contacted_at || new Date().toISOString()]);
+  audit(req, 'create', 'communication_logs', id, `${type} with patient ${req.params.patientId}`);
+  const log = getOne('SELECT cl.*, u.name as logged_by_name FROM communication_logs cl LEFT JOIN users u ON cl.logged_by = u.id WHERE cl.id = ?', [id]);
+  res.status(201).json({ data: log });
+});
+
+app.delete('/api/communications/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM communication_logs WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Shifts ──────────────────────────────────────────────────────────────────
+
+app.get('/api/shifts', authenticate, (req, res) => {
+  const { employee_id, date, week_start } = req.query;
+  let sql = `SELECT s.*, u.name as employee_name, u.role as employee_role, u2.name as swap_requested_by_name
+    FROM shifts s LEFT JOIN users u ON s.employee_id = u.id LEFT JOIN users u2 ON s.swap_requested_by = u2.id`;
+  const params = [], conditions = [];
+  if (employee_id) { conditions.push('s.employee_id = ?'); params.push(employee_id); }
+  if (date) { conditions.push('s.date = ?'); params.push(date); }
+  if (week_start) { conditions.push('s.date >= ? AND s.date <= date(?, "+6 days")'); params.push(week_start, week_start); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY s.date, s.start_time';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/shifts', authenticate, (req, res) => {
+  const { employee_id, date, start_time, end_time, break_minutes, notes } = req.body;
+  if (!employee_id || !date || !start_time || !end_time) return res.status(400).json({ message: 'employee_id, date, start_time, end_time required' });
+  const id = runSql('INSERT INTO shifts (employee_id, date, start_time, end_time, break_minutes, notes) VALUES (?,?,?,?,?,?)',
+    [employee_id, date, start_time, end_time, break_minutes || 0, notes || null]);
+  audit(req, 'create', 'shifts', id, `Shift for employee ${employee_id} on ${date}`);
+  const shift = getOne(`SELECT s.*, u.name as employee_name FROM shifts s LEFT JOIN users u ON s.employee_id = u.id WHERE s.id = ?`, [id]);
+  res.status(201).json({ data: shift });
+});
+
+app.put('/api/shifts/:id', authenticate, (req, res) => {
+  const { employee_id, date, start_time, end_time, break_minutes, status, notes } = req.body;
+  db.run('UPDATE shifts SET employee_id=?, date=?, start_time=?, end_time=?, break_minutes=?, status=?, notes=? WHERE id=?',
+    [employee_id, date, start_time, end_time, break_minutes || 0, status || 'scheduled', notes || null, req.params.id]);
+  autoSave();
+  const shift = getOne(`SELECT s.*, u.name as employee_name FROM shifts s LEFT JOIN users u ON s.employee_id = u.id WHERE s.id = ?`, [req.params.id]);
+  res.json({ data: shift });
+});
+
+app.delete('/api/shifts/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM shifts WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.post('/api/shifts/:id/swap', authenticate, (req, res) => {
+  db.run('UPDATE shifts SET swap_requested_by = ?, swap_status = ? WHERE id = ?', [req.user.id, 'pending', req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM shifts WHERE id = ?', [req.params.id]) });
+});
+
+app.patch('/api/shifts/:id/swap', authenticate, (req, res) => {
+  const { swap_status } = req.body;
+  db.run('UPDATE shifts SET swap_status = ? WHERE id = ?', [swap_status, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM shifts WHERE id = ?', [req.params.id]) });
+});
+
+// ── Medical History Summary ─────────────────────────────────────────────────
+
+app.get('/api/patients/:patientId/medical-summary', authenticate, (req, res) => {
+  const patient = getOne('SELECT * FROM patients WHERE id = ?', [req.params.patientId]);
+  if (!patient) return res.status(404).json({ message: 'Patient not found' });
+  const visits = getAll('SELECT v.*, u.name as doctor_name FROM visits v LEFT JOIN users u ON v.doctor_id = u.id WHERE v.patient_id = ? ORDER BY v.created_at DESC', [req.params.patientId]);
+  const prescriptions = getAll(`SELECT p.*, u.name as doctor_name, GROUP_CONCAT(pi.medication_name || ' ' || pi.dosage, ', ') as medications FROM prescriptions p LEFT JOIN users u ON p.doctor_id = u.id LEFT JOIN prescription_items pi ON pi.prescription_id = p.id WHERE p.patient_id = ? GROUP BY p.id ORDER BY p.created_at DESC`, [req.params.patientId]);
+  const allergies = getAll('SELECT * FROM patient_allergies WHERE patient_id = ?', [req.params.patientId]);
+  const labResults = getAll('SELECT * FROM lab_orders WHERE patient_id = ? ORDER BY created_at DESC', [req.params.patientId]);
+  const diagnoses = visits.filter(v => v.diagnosis).map(v => ({ diagnosis: v.diagnosis, date: v.created_at, doctor: v.doctor_name }));
+  const vitals = visits.filter(v => v.blood_pressure || v.heart_rate || v.temperature || v.weight).map(v => ({
+    date: v.created_at, blood_pressure: v.blood_pressure, heart_rate: v.heart_rate, temperature: v.temperature, weight: v.weight
+  }));
+  res.json({ data: { patient, visits: visits.length, diagnoses, prescriptions, allergies, labResults, vitals, recentVisits: visits.slice(0, 5) } });
+});
+
+// ── Suppliers ───────────────────────────────────────────────────────────────
+
+app.get('/api/suppliers', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM suppliers ORDER BY name') });
+});
+
+app.post('/api/suppliers', authenticate, (req, res) => {
+  const { name, contact_person, email, phone, address, category, payment_terms, notes } = req.body;
+  if (!name) return res.status(400).json({ message: 'name required' });
+  const id = runSql('INSERT INTO suppliers (name, contact_person, email, phone, address, category, payment_terms, notes) VALUES (?,?,?,?,?,?,?,?)',
+    [name, contact_person || null, email || null, phone || null, address || null, category || 'general', payment_terms || null, notes || null]);
+  audit(req, 'create', 'suppliers', id, `Created supplier: ${name}`);
+  res.status(201).json({ data: getOne('SELECT * FROM suppliers WHERE id = ?', [id]) });
+});
+
+app.put('/api/suppliers/:id', authenticate, (req, res) => {
+  const { name, contact_person, email, phone, address, category, payment_terms, notes, is_active } = req.body;
+  db.run('UPDATE suppliers SET name=?, contact_person=?, email=?, phone=?, address=?, category=?, payment_terms=?, notes=?, is_active=? WHERE id=?',
+    [name, contact_person || null, email || null, phone || null, address || null, category || 'general', payment_terms || null, notes || null, is_active ?? 1, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM suppliers WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/suppliers/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM suppliers WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/supplier-orders', authenticate, (req, res) => {
+  const { supplier_id, status } = req.query;
+  let sql = `SELECT so.*, s.name as supplier_name, u.name as created_by_name FROM supplier_orders so LEFT JOIN suppliers s ON so.supplier_id = s.id LEFT JOIN users u ON so.created_by = u.id`;
+  const params = [], conditions = [];
+  if (supplier_id) { conditions.push('so.supplier_id = ?'); params.push(supplier_id); }
+  if (status) { conditions.push('so.status = ?'); params.push(status); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY so.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/supplier-orders', authenticate, (req, res) => {
+  const { supplier_id, order_number, items, total_amount, expected_delivery, notes } = req.body;
+  if (!supplier_id || !items || !total_amount) return res.status(400).json({ message: 'supplier_id, items, total_amount required' });
+  const id = runSql('INSERT INTO supplier_orders (supplier_id, order_number, items, total_amount, expected_delivery, notes, created_by) VALUES (?,?,?,?,?,?,?)',
+    [supplier_id, order_number || null, items, total_amount, expected_delivery || null, notes || null, req.user.id]);
+  audit(req, 'create', 'supplier_orders', id, `Order from supplier ${supplier_id}: ${total_amount}`);
+  const order = getOne('SELECT so.*, s.name as supplier_name FROM supplier_orders so LEFT JOIN suppliers s ON so.supplier_id = s.id WHERE so.id = ?', [id]);
+  res.status(201).json({ data: order });
+});
+
+app.patch('/api/supplier-orders/:id', authenticate, (req, res) => {
+  const { status, delivered_at, notes } = req.body;
+  db.run('UPDATE supplier_orders SET status=?, delivered_at=?, notes=? WHERE id=?',
+    [status, delivered_at || null, notes || null, req.params.id]);
+  autoSave();
+  const order = getOne('SELECT so.*, s.name as supplier_name FROM supplier_orders so LEFT JOIN suppliers s ON so.supplier_id = s.id WHERE so.id = ?', [req.params.id]);
+  res.json({ data: order });
+});
+
+app.delete('/api/supplier-orders/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM supplier_orders WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── TV Announcements ────────────────────────────────────────────────────────
+
+app.get('/api/tv/announcements', authenticate, (req, res) => {
+  res.json({ data: getAll("SELECT * FROM tv_announcements WHERE is_active = 1 AND (starts_at IS NULL OR starts_at <= datetime('now')) AND (ends_at IS NULL OR ends_at >= datetime('now')) ORDER BY created_at DESC") });
+});
+
+app.get('/api/tv/announcements/all', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM tv_announcements ORDER BY created_at DESC') });
+});
+
+app.post('/api/tv/announcements', authenticate, (req, res) => {
+  const { title, content, type, starts_at, ends_at } = req.body;
+  if (!title) return res.status(400).json({ message: 'title required' });
+  const id = runSql('INSERT INTO tv_announcements (title, content, type, starts_at, ends_at) VALUES (?,?,?,?,?)',
+    [title, content || null, type || 'info', starts_at || null, ends_at || null]);
+  res.status(201).json({ data: getOne('SELECT * FROM tv_announcements WHERE id = ?', [id]) });
+});
+
+app.put('/api/tv/announcements/:id', authenticate, (req, res) => {
+  const { title, content, type, is_active, starts_at, ends_at } = req.body;
+  db.run('UPDATE tv_announcements SET title=?, content=?, type=?, is_active=?, starts_at=?, ends_at=? WHERE id=?',
+    [title, content || null, type || 'info', is_active ?? 1, starts_at || null, ends_at || null, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM tv_announcements WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/tv/announcements/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM tv_announcements WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/tv/dashboard', authenticate, (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const todayAppointments = countSql("SELECT COUNT(*) FROM appointments WHERE scheduled_at LIKE ?", [today + '%']);
+  const waitingCount = countSql("SELECT COUNT(*) FROM appointments WHERE status = 'arrived' AND scheduled_at LIKE ?", [today + '%']);
+  const completedToday = countSql("SELECT COUNT(*) FROM appointments WHERE status = 'completed' AND scheduled_at LIKE ?", [today + '%']);
+  const activeAnnouncements = getAll("SELECT * FROM tv_announcements WHERE is_active = 1 AND (starts_at IS NULL OR starts_at <= datetime('now')) AND (ends_at IS NULL OR ends_at >= datetime('now')) ORDER BY created_at DESC LIMIT 5");
+  const upcoming = getAll(`SELECT a.scheduled_at, a.status, a.type, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name
+    FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id LEFT JOIN users u ON a.doctor_id = u.id
+    WHERE a.scheduled_at LIKE ? AND a.status IN ('scheduled','confirmed','arrived')
+    ORDER BY a.scheduled_at LIMIT 10`, [today + '%']);
+  res.json({ data: { todayAppointments, waitingCount, completedToday, activeAnnouncements, upcoming, currentTime: new Date().toISOString() } });
+});
+
+// ── Printable Prescription ──────────────────────────────────────────────────
+
+app.get('/api/prescriptions/:id/print-data', authenticate, (req, res) => {
+  const prescription = getOne('SELECT p.*, u.name as doctor_name, u.specialty as doctor_specialty, u.license_number FROM prescriptions p LEFT JOIN users u ON p.doctor_id = u.id WHERE p.id = ?', [req.params.id]);
+  if (!prescription) return res.status(404).json({ message: 'Not found' });
+  const patient = getOne('SELECT * FROM patients WHERE id = ?', [prescription.patient_id]);
+  const items = getAll('SELECT * FROM prescription_items WHERE prescription_id = ?', [req.params.id]);
+  const clinic = getOne('SELECT * FROM clinics WHERE id = 1') || { name: 'Modern Clinic', address: '', phone: '', email: '' };
+  res.json({ data: { prescription, patient, items, clinic } });
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────

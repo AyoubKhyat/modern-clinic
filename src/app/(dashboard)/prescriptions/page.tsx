@@ -16,10 +16,8 @@ import {
   Loader2,
   FileText,
 } from "lucide-react"
-import { prescriptionsApi, patientsApi, medicationsApi } from "@/lib/api"
-import { printPrescription } from "@/lib/print-prescription"
+import { prescriptionsApi, patientsApi, medicationsApi, prescriptionPrintApi } from "@/lib/api"
 import { useAuthStore } from "@/stores/auth-store"
-import { useI18n } from "@/lib/i18n"
 import type { Prescription, PrescriptionItem, Patient, PaginatedResponse } from "@/types"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -71,7 +69,6 @@ const DOCTORS = [
 export default function PrescriptionsPage() {
   const { toast } = useToast()
   const { user } = useAuthStore()
-  const { locale } = useI18n()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [meta, setMeta] = useState<PaginatedResponse<Prescription>["meta"] | null>(null)
   const [page, setPage] = useState(1)
@@ -129,6 +126,141 @@ export default function PrescriptionsPage() {
     setFormOpen(false)
     setEditingPrescription(null)
     fetchPrescriptions()
+  }
+
+  async function handlePrint(id: number) {
+    try {
+      const { data } = await prescriptionPrintApi.getPrintData(id)
+      const rx = data
+
+      const patientName = rx.patient?.full_name
+        ?? (rx.patient?.first_name ? `${rx.patient.first_name} ${rx.patient.last_name}` : "N/A")
+      const patientAge = rx.patient?.date_of_birth
+        ? `${Math.floor((Date.now() - new Date(rx.patient.date_of_birth).getTime()) / 31557600000)}`
+        : "N/A"
+      const doctorName = rx.doctor?.name ?? "N/A"
+      const clinicName = user?.employee?.clinic?.name ?? "Modern Clinic"
+      const clinicAddress = user?.employee?.clinic?.address ?? ""
+      const prescriptionDate = rx.created_at
+        ? new Date(rx.created_at).toLocaleDateString("en-US", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })
+        : new Date().toLocaleDateString("en-US", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })
+
+      const medicationRows = (rx.items ?? [])
+        .map(
+          (item: any, i: number) => `
+          <tr>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#6b7280;">${i + 1}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;">${escHtml(item.medication_name)}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">${escHtml(item.dosage ?? "—")}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">${escHtml(item.frequency ?? "—")}</td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">${escHtml(item.duration ?? "—")}</td>
+          </tr>`
+        )
+        .join("")
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prescription #${rx.id ?? ""}</title>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.6;">
+  <div style="max-width:700px;margin:0 auto;padding:40px 32px;">
+
+    <!-- Clinic Header -->
+    <div style="text-align:center;border-bottom:3px solid #0d9488;padding-bottom:20px;margin-bottom:24px;">
+      <h1 style="margin:0;font-size:24px;color:#0d9488;letter-spacing:0.5px;">${escHtml(clinicName)}</h1>
+      ${clinicAddress ? `<p style="margin:4px 0 0;font-size:12px;color:#6b7280;">${escHtml(clinicAddress)}</p>` : ""}
+      <p style="margin:8px 0 0;font-size:13px;color:#374151;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Medical Prescription</p>
+    </div>
+
+    <!-- Patient Info -->
+    <div style="display:flex;justify-content:space-between;margin-bottom:24px;gap:16px;">
+      <div style="flex:1;">
+        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Patient</p>
+        <p style="margin:0;font-size:15px;font-weight:600;">${escHtml(patientName)}</p>
+      </div>
+      <div>
+        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Age</p>
+        <p style="margin:0;font-size:15px;font-weight:600;">${escHtml(patientAge)}${patientAge !== "N/A" ? " years" : ""}</p>
+      </div>
+      <div>
+        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Date</p>
+        <p style="margin:0;font-size:15px;font-weight:600;">${escHtml(prescriptionDate)}</p>
+      </div>
+    </div>
+
+    <!-- Rx Symbol -->
+    <div style="margin-bottom:20px;">
+      <span style="font-size:28px;font-weight:700;color:#0d9488;font-family:serif;">&#8478;</span>
+    </div>
+
+    <!-- Medications Table -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+      <thead>
+        <tr style="background:#f0fdfa;">
+          <th style="padding:10px 12px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;border-bottom:2px solid #ccfbf1;width:40px;">#</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;border-bottom:2px solid #ccfbf1;">Medication</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;border-bottom:2px solid #ccfbf1;">Dosage</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;border-bottom:2px solid #ccfbf1;">Frequency</th>
+          <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;border-bottom:2px solid #ccfbf1;">Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${medicationRows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af;">No medications listed</td></tr>'}
+      </tbody>
+    </table>
+
+    ${rx.notes ? `
+    <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:24px;">
+      <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Notes</p>
+      <p style="margin:0;font-size:13px;color:#78350f;">${escHtml(rx.notes)}</p>
+    </div>` : ""}
+
+    <!-- Doctor Signature -->
+    <div style="margin-top:48px;display:flex;justify-content:flex-end;">
+      <div style="text-align:center;">
+        <p style="margin:0 0 40px;font-size:14px;font-weight:600;">Dr. ${escHtml(doctorName)}</p>
+        <div style="width:220px;border-top:1px solid #374151;margin:0 auto 6px;"></div>
+        <p style="margin:0;font-size:11px;color:#6b7280;">Signature</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top:40px;text-align:center;border-top:1px solid #e5e7eb;padding-top:16px;">
+      <p style="margin:0;font-size:10px;color:#9ca3af;font-style:italic;">This is a computer-generated prescription</p>
+    </div>
+
+  </div>
+  <script>window.onafterprint = function() { window.close(); };</script>
+</body>
+</html>`
+
+      const w = window.open("", "_blank")
+      if (w) {
+        w.document.write(html)
+        w.document.close()
+        w.print()
+      }
+    } catch {
+      toast("Failed to load prescription print data", "error")
+    }
+  }
+
+  function escHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
   }
 
   return (
@@ -241,8 +373,8 @@ export default function PrescriptionsPage() {
                       <Edit className="size-3.5" />
                       Edit
                     </Button>
-                    <Button variant="ghost" size="icon-sm" className="ml-auto" onClick={() => printPrescription(prescription, user?.employee?.clinic?.name, locale)}>
-                      <Printer className="size-3.5" />
+                    <Button variant="ghost" size="icon-sm" className="ml-auto" onClick={() => handlePrint(prescription.id)}>
+                      <Printer className="size-4" />
                     </Button>
                   </CardFooter>
                 </Card>

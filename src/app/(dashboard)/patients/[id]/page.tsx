@@ -28,6 +28,8 @@ import {
   ShieldAlert,
   StickyNote,
   FileSignature,
+  MessageCircle,
+  HeartPulse,
 } from "lucide-react"
 import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, labOrdersApi, vaccinationsApi, referralsApi, timelineApi } from "@/lib/api"
 import type { Patient, Appointment, Visit, Payment } from "@/types"
@@ -61,6 +63,8 @@ import { AllergiesTab } from "./allergies-tab"
 import { ClinicalNotesTab } from "./clinical-notes-tab"
 import { ConsentsTab } from "./consents-tab"
 import { DocumentsTab as DocumentsTabNew } from "./documents-tab"
+import { CommunicationsTab } from "./communications-tab"
+import { MedicalSummaryTab } from "./medical-summary-tab"
 
 const DOCTORS = [
   { value: "2", label: "Dr. Amina Tazi" },
@@ -201,6 +205,14 @@ export default function PatientDetailPage({
             <FileSignature className="size-4" />
             Consents
           </TabsTrigger>
+          <TabsTrigger value="communications">
+            <MessageCircle className="size-4" />
+            Comms
+          </TabsTrigger>
+          <TabsTrigger value="medical-summary">
+            <HeartPulse className="size-4" />
+            Summary
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="timeline" className="pt-4">
@@ -244,6 +256,12 @@ export default function PatientDetailPage({
         </TabsContent>
         <TabsContent value="consents" className="pt-4">
           <ConsentsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="communications" className="pt-4">
+          <CommunicationsTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="medical-summary" className="pt-4">
+          <MedicalSummaryTab patientId={patient.id} />
         </TabsContent>
       </Tabs>
 

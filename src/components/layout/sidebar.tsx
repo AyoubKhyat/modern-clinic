@@ -40,6 +40,10 @@ import {
   ShieldAlert,
   PieChart,
   BookOpen,
+  HeartPulse,
+  Clock,
+  Truck,
+  Tv,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -96,6 +100,10 @@ const navItems: NavItem[] = [
   { labelKey: "nav.recurring_appointments", label: "Recurring", href: "/recurring-appointments", icon: Repeat, roles: ["admin", "receptionist"] },
   { labelKey: "nav.budgeting", label: "Budgeting", href: "/budgeting", icon: PieChart, roles: ["admin", "accountant"] },
   { labelKey: "nav.consent_forms", label: "Consents", href: "/consent-forms", icon: FileSignature, roles: ["admin", "doctor"] },
+  { labelKey: "nav.insurance_claims", label: "Insurance", href: "/insurance-claims", icon: HeartPulse, roles: ["admin", "accountant"] },
+  { labelKey: "nav.shifts", label: "Shifts", href: "/shifts", icon: Clock, roles: ["admin"] },
+  { labelKey: "nav.suppliers", label: "Suppliers", href: "/suppliers", icon: Truck, roles: ["admin"] },
+  { labelKey: "nav.tv_dashboard", label: "TV Mode", href: "/tv-dashboard", icon: Tv, roles: ["admin", "receptionist"] },
   { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },
   { labelKey: "nav.settings", label: "Settings", href: "/settings", icon: Settings, roles: ["admin"] },
 ]

@@ -376,3 +376,56 @@ export const patientConsentsApi = {
   create: (patientId: number, data: any) => api.post(`/patients/${patientId}/consents`, data),
   delete: (id: number) => api.delete(`/patient-consents/${id}`),
 };
+
+export const insuranceClaimsApi = {
+  list: (params?: Record<string, any>) => api.get('/insurance-claims', { params }),
+  create: (data: any) => api.post('/insurance-claims', data),
+  update: (id: number, data: any) => api.patch(`/insurance-claims/${id}`, data),
+  delete: (id: number) => api.delete(`/insurance-claims/${id}`),
+  summary: () => api.get('/insurance-claims/summary'),
+};
+
+export const communicationLogsApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/communications`),
+  create: (patientId: number, data: any) => api.post(`/patients/${patientId}/communications`, data),
+  delete: (id: number) => api.delete(`/communications/${id}`),
+};
+
+export const shiftsApi = {
+  list: (params?: Record<string, any>) => api.get('/shifts', { params }),
+  create: (data: any) => api.post('/shifts', data),
+  update: (id: number, data: any) => api.put(`/shifts/${id}`, data),
+  delete: (id: number) => api.delete(`/shifts/${id}`),
+  requestSwap: (id: number, data: any) => api.post(`/shifts/${id}/swap`, data),
+  handleSwap: (id: number, data: any) => api.patch(`/shifts/${id}/swap`, data),
+};
+
+export const suppliersApi = {
+  list: () => api.get('/suppliers'),
+  create: (data: any) => api.post('/suppliers', data),
+  update: (id: number, data: any) => api.put(`/suppliers/${id}`, data),
+  delete: (id: number) => api.delete(`/suppliers/${id}`),
+};
+
+export const supplierOrdersApi = {
+  list: (params?: Record<string, any>) => api.get('/supplier-orders', { params }),
+  create: (data: any) => api.post('/supplier-orders', data),
+  update: (id: number, data: any) => api.patch(`/supplier-orders/${id}`, data),
+  delete: (id: number) => api.delete(`/supplier-orders/${id}`),
+};
+
+export const tvDashboardApi = {
+  getData: () => api.get('/tv/dashboard'),
+  getAnnouncements: () => api.get('/tv/announcements'),
+  createAnnouncement: (data: any) => api.post('/tv/announcements', data),
+  updateAnnouncement: (id: number, data: any) => api.put(`/tv/announcements/${id}`, data),
+  deleteAnnouncement: (id: number) => api.delete(`/tv/announcements/${id}`),
+};
+
+export const prescriptionPrintApi = {
+  getPrintData: (id: number) => api.get(`/prescriptions/${id}/print-data`),
+};
+
+export const medicalSummaryApi = {
+  get: (patientId: number) => api.get(`/patients/${patientId}/medical-summary`),
+};

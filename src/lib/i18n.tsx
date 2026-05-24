@@ -36,6 +36,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.budgeting": "Budgeting",
     "nav.consent_forms": "Consents",
     "nav.guide": "Guide",
+    "nav.insurance_claims": "Insurance",
+    "nav.shifts": "Shifts",
+    "nav.suppliers": "Suppliers",
+    "nav.tv_dashboard": "TV Mode",
     "nav.logout": "Log out",
 
     "dashboard.greeting_morning": "Good morning",
@@ -147,6 +151,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.budgeting": "Budget",
     "nav.consent_forms": "Consentements",
     "nav.guide": "Guide",
+    "nav.insurance_claims": "Assurances",
+    "nav.shifts": "Équipes",
+    "nav.suppliers": "Fournisseurs",
+    "nav.tv_dashboard": "Mode TV",
     "nav.logout": "Déconnexion",
 
     "dashboard.greeting_morning": "Bonjour",
@@ -258,6 +266,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.budgeting": "الميزانية",
     "nav.consent_forms": "الموافقات",
     "nav.guide": "الدليل",
+    "nav.insurance_claims": "التأمين",
+    "nav.shifts": "الورديات",
+    "nav.suppliers": "الموردون",
+    "nav.tv_dashboard": "وضع التلفاز",
     "nav.logout": "تسجيل الخروج",
 
     "dashboard.greeting_morning": "صباح الخير",
