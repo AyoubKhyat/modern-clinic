@@ -285,3 +285,94 @@ export const importApi = {
   patients: (rows: any[]) => api.post('/import/patients', { rows }),
   appointments: (rows: any[]) => api.post('/import/appointments', { rows }),
 };
+
+export const patientDocsApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/docs`),
+  get: (id: number) => api.get(`/docs/${id}`),
+  upload: (patientId: number, data: any) => api.post(`/patients/${patientId}/docs`, data),
+  delete: (id: number) => api.delete(`/docs/${id}`),
+};
+
+export const recurringAppointmentsApi = {
+  list: (params?: Record<string, any>) => api.get('/recurring-appointments', { params }),
+  create: (data: any) => api.post('/recurring-appointments', data),
+  update: (id: number, data: any) => api.put(`/recurring-appointments/${id}`, data),
+  delete: (id: number) => api.delete(`/recurring-appointments/${id}`),
+  generate: (id: number, until?: string) => api.post(`/recurring-appointments/${id}/generate`, { until }),
+};
+
+export const patientAllergiesApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/allergies`),
+  create: (patientId: number, data: any) => api.post(`/patients/${patientId}/allergies`, data),
+  delete: (id: number) => api.delete(`/allergies/${id}`),
+};
+
+export const roomsApi = {
+  list: () => api.get('/rooms'),
+  create: (data: any) => api.post('/rooms', data),
+  update: (id: number, data: any) => api.put(`/rooms/${id}`, data),
+  delete: (id: number) => api.delete(`/rooms/${id}`),
+};
+
+export const roomBookingsApi = {
+  list: (params?: Record<string, any>) => api.get('/room-bookings', { params }),
+  create: (data: any) => api.post('/room-bookings', data),
+  delete: (id: number) => api.delete(`/room-bookings/${id}`),
+};
+
+export const expenseBudgetsApi = {
+  list: (params?: Record<string, any>) => api.get('/expense-budgets', { params }),
+  create: (data: any) => api.post('/expense-budgets', data),
+  delete: (id: number) => api.delete(`/expense-budgets/${id}`),
+  summary: (month: string) => api.get('/expense-budgets/summary', { params: { month } }),
+};
+
+export const tasksApi = {
+  list: (params?: Record<string, any>) => api.get('/tasks', { params }),
+  create: (data: any) => api.post('/tasks', data),
+  update: (id: number, data: any) => api.put(`/tasks/${id}`, data),
+  updateStatus: (id: number, status: string) => api.patch(`/tasks/${id}/status`, { status }),
+  delete: (id: number) => api.delete(`/tasks/${id}`),
+};
+
+export const referralDashboardApi = {
+  get: () => api.get('/referrals/dashboard'),
+};
+
+export const staffReviewsApi = {
+  list: (params?: Record<string, any>) => api.get('/staff-reviews', { params }),
+  create: (data: any) => api.post('/staff-reviews', data),
+  delete: (id: number) => api.delete(`/staff-reviews/${id}`),
+};
+
+export const clinicalNotesApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/clinical-notes`),
+  create: (patientId: number, data: any) => api.post(`/patients/${patientId}/clinical-notes`, data),
+  update: (id: number, data: any) => api.put(`/clinical-notes/${id}`, data),
+  delete: (id: number) => api.delete(`/clinical-notes/${id}`),
+};
+
+export const clinicsApi = {
+  list: () => api.get('/clinics'),
+  create: (data: any) => api.post('/clinics', data),
+  update: (id: number, data: any) => api.put(`/clinics/${id}`, data),
+  delete: (id: number) => api.delete(`/clinics/${id}`),
+};
+
+export const dashboardWidgetsApi = {
+  list: () => api.get('/dashboard-widgets'),
+  save: (widgets: any[]) => api.post('/dashboard-widgets', { widgets }),
+};
+
+export const consentFormsApi = {
+  list: (params?: Record<string, any>) => api.get('/consent-forms', { params }),
+  create: (data: any) => api.post('/consent-forms', data),
+  update: (id: number, data: any) => api.put(`/consent-forms/${id}`, data),
+  delete: (id: number) => api.delete(`/consent-forms/${id}`),
+};
+
+export const patientConsentsApi = {
+  list: (patientId: number) => api.get(`/patients/${patientId}/consents`),
+  create: (patientId: number, data: any) => api.post(`/patients/${patientId}/consents`, data),
+  delete: (id: number) => api.delete(`/patient-consents/${id}`),
+};

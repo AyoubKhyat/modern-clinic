@@ -19,17 +19,17 @@ import {
   CreditCard,
   Clock,
   FileText,
-  FileUp,
-  File,
-  Trash2,
   Shield,
   FlaskConical,
   Syringe,
   ArrowRightLeft,
   Plus,
   ClipboardList,
+  ShieldAlert,
+  StickyNote,
+  FileSignature,
 } from "lucide-react"
-import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, documentsApi, labOrdersApi, vaccinationsApi, referralsApi, timelineApi } from "@/lib/api"
+import { patientsApi, appointmentsApi, visitsApi, paymentsApi, patientStatsApi, labOrdersApi, vaccinationsApi, referralsApi, timelineApi } from "@/lib/api"
 import type { Patient, Appointment, Visit, Payment } from "@/types"
 import { PatientForm } from "@/components/patients/patient-form"
 import { Button } from "@/components/ui/button"
@@ -57,6 +57,10 @@ import {
 import { useToast } from "@/components/ui/toast"
 import { CertificatesTab } from "./certificates-tab"
 import { TreatmentPlansTab } from "./treatment-plans-tab"
+import { AllergiesTab } from "./allergies-tab"
+import { ClinicalNotesTab } from "./clinical-notes-tab"
+import { ConsentsTab } from "./consents-tab"
+import { DocumentsTab as DocumentsTabNew } from "./documents-tab"
 
 const DOCTORS = [
   { value: "2", label: "Dr. Amina Tazi" },
@@ -185,6 +189,18 @@ export default function PatientDetailPage({
             <ClipboardList className="size-4" />
             Treatment Plans
           </TabsTrigger>
+          <TabsTrigger value="allergies">
+            <ShieldAlert className="size-4" />
+            Allergies
+          </TabsTrigger>
+          <TabsTrigger value="clinical-notes">
+            <StickyNote className="size-4" />
+            Notes
+          </TabsTrigger>
+          <TabsTrigger value="consents">
+            <FileSignature className="size-4" />
+            Consents
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="timeline" className="pt-4">
@@ -203,7 +219,7 @@ export default function PatientDetailPage({
           <PaymentsTab patientId={patient.id} />
         </TabsContent>
         <TabsContent value="documents" className="pt-4">
-          <DocumentsTab patientId={patient.id} />
+          <DocumentsTabNew patientId={patient.id} />
         </TabsContent>
         <TabsContent value="lab-results" className="pt-4">
           <LabResultsTab patientId={patient.id} />
@@ -219,6 +235,15 @@ export default function PatientDetailPage({
         </TabsContent>
         <TabsContent value="treatment-plans" className="pt-4">
           <TreatmentPlansTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="allergies" className="pt-4">
+          <AllergiesTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="clinical-notes" className="pt-4">
+          <ClinicalNotesTab patientId={patient.id} />
+        </TabsContent>
+        <TabsContent value="consents" className="pt-4">
+          <ConsentsTab patientId={patient.id} />
         </TabsContent>
       </Tabs>
 
@@ -570,171 +595,6 @@ function PaymentsTab({ patientId }: { patientId: number }) {
           </CardContent>
         </Card>
       ))}
-    </div>
-  )
-}
-
-interface Document {
-  id: number
-  name: string
-  file_type: string
-  file_size: number
-  created_at: string
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function DocumentsTab({ patientId }: { patientId: number }) {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toast } = useToast()
-
-  const fetchDocuments = useCallback(async () => {
-    try {
-      const { data } = await documentsApi.list(patientId)
-      setDocuments(data.data ?? data ?? [])
-    } catch {
-      // silently handled
-    } finally {
-      setLoading(false)
-    }
-  }, [patientId])
-
-  useEffect(() => {
-    fetchDocuments()
-  }, [fetchDocuments])
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setUploading(true)
-    try {
-      const reader = new FileReader()
-      const fileData = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(",")[1])
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-
-      await documentsApi.upload(patientId, {
-        name: file.name,
-        file_type: file.type,
-        file_size: file.size,
-        file_data: fileData,
-      })
-
-      toast("Document uploaded successfully")
-      await fetchDocuments()
-    } catch {
-      toast("Failed to upload document")
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    }
-  }
-
-  async function handleDelete(docId: number) {
-    setDeletingId(docId)
-    try {
-      await documentsApi.delete(docId)
-      toast("Document deleted successfully")
-      setDocuments((prev) => prev.filter((d) => d.id !== docId))
-    } catch {
-      toast("Failed to delete document")
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  if (loading) return <TabSkeleton />
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-muted-foreground">
-          {documents.length} document{documents.length !== 1 ? "s" : ""}
-        </h3>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleUpload}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <FileUp className="size-4" />
-            )}
-            {uploading ? "Uploading..." : "Upload"}
-          </Button>
-        </div>
-      </div>
-
-      {documents.length === 0 ? (
-        <TabEmpty label="No documents uploaded for this patient." />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {documents.map((doc, i) => (
-            <motion.div
-              key={doc.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-            >
-              <Card className="border-0 shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-300 hover:shadow-md hover:ring-foreground/10 dark:ring-foreground/[0.04]">
-                <CardContent className="flex flex-col gap-2 py-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <File className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
-                      <span className="truncate text-sm font-medium">
-                        {doc.name}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={deletingId === doc.id}
-                      onClick={() => handleDelete(doc.id)}
-                    >
-                      {deletingId === doc.id ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-3.5 text-destructive" />
-                      )}
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{doc.file_type || "Unknown"}</span>
-                    <span>&middot;</span>
-                    <span>{formatFileSize(doc.file_size)}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {format(parseISO(doc.created_at), "MMM d, yyyy")}
-                  </span>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

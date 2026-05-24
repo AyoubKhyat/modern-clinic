@@ -443,6 +443,244 @@ async function initDatabase() {
   try { db.run("ALTER TABLE patients ADD COLUMN insurance_number TEXT"); } catch {}
   try { db.run("ALTER TABLE patients ADD COLUMN insurance_type TEXT"); } catch {}
 
+  // ── New tables for features #52-#63 ──
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS patient_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      file_type TEXT,
+      file_size INTEGER,
+      file_data TEXT,
+      category TEXT DEFAULT 'general',
+      uploaded_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (uploaded_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recurring_appointments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER,
+      frequency TEXT NOT NULL DEFAULT 'weekly',
+      day_of_week INTEGER,
+      day_of_month INTEGER,
+      time TEXT NOT NULL,
+      duration_minutes INTEGER DEFAULT 30,
+      type TEXT DEFAULT 'consultation',
+      reason TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS patient_allergies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      allergen TEXT NOT NULL,
+      severity TEXT DEFAULT 'moderate',
+      reaction TEXT,
+      noted_date TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT DEFAULT 'consultation',
+      floor TEXT,
+      capacity INTEGER DEFAULT 1,
+      equipment TEXT,
+      status TEXT DEFAULT 'available',
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS room_bookings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id INTEGER NOT NULL,
+      appointment_id INTEGER,
+      booked_by INTEGER,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      purpose TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (room_id) REFERENCES rooms(id),
+      FOREIGN KEY (appointment_id) REFERENCES appointments(id),
+      FOREIGN KEY (booked_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS expense_budgets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      month TEXT NOT NULL,
+      budget_amount REAL NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'todo',
+      priority TEXT DEFAULT 'medium',
+      assigned_to INTEGER,
+      created_by INTEGER,
+      due_date TEXT,
+      completed_at TEXT,
+      category TEXT DEFAULT 'general',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (assigned_to) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS staff_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      reviewer_id INTEGER NOT NULL,
+      review_period TEXT NOT NULL,
+      overall_rating INTEGER NOT NULL,
+      clinical_skills INTEGER,
+      communication INTEGER,
+      punctuality INTEGER,
+      teamwork INTEGER,
+      strengths TEXT,
+      improvements TEXT,
+      goals TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS clinical_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER NOT NULL,
+      visit_id INTEGER,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      template_type TEXT,
+      is_pinned INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id),
+      FOREIGN KEY (visit_id) REFERENCES visits(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS clinics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      logo TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  try { db.run("ALTER TABLE users ADD COLUMN clinic_id INTEGER DEFAULT 1"); } catch {}
+  try { db.run("ALTER TABLE appointments ADD COLUMN clinic_id INTEGER DEFAULT 1"); } catch {}
+  try { db.run("ALTER TABLE rooms ADD COLUMN clinic_id INTEGER DEFAULT 1"); } catch {}
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS dashboard_widgets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      widget_key TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      width TEXT DEFAULT 'half',
+      is_visible INTEGER DEFAULT 1,
+      config TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS consent_forms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      is_template INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS patient_consents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      form_id INTEGER NOT NULL,
+      signed_at TEXT DEFAULT (datetime('now')),
+      signature_data TEXT,
+      witness_name TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (form_id) REFERENCES consent_forms(id)
+    )
+  `);
+
+  // Seed rooms if empty
+  const roomCount = db.exec("SELECT COUNT(*) as c FROM rooms")[0]?.values[0][0] || 0;
+  if (roomCount === 0) {
+    const roomsData = [
+      ['Consultation Room 1', 'consultation', 'Ground', 2, 'Examination table, BP monitor, Stethoscope'],
+      ['Consultation Room 2', 'consultation', 'Ground', 2, 'Examination table, BP monitor, Otoscope'],
+      ['Procedure Room', 'procedure', 'Ground', 3, 'Surgical table, Surgical lights, Sterilizer'],
+      ['Emergency Room', 'emergency', 'Ground', 4, 'Crash cart, Defibrillator, Oxygen supply'],
+      ['Lab Room', 'lab', '1st Floor', 2, 'Microscope, Centrifuge, Blood analyzer'],
+    ];
+    for (const r of roomsData) {
+      db.run('INSERT INTO rooms (name, type, floor, capacity, equipment) VALUES (?,?,?,?,?)', r);
+    }
+  }
+
+  // Seed clinics if empty
+  const clinicCount = db.exec("SELECT COUNT(*) as c FROM clinics")[0]?.values[0][0] || 0;
+  if (clinicCount === 0) {
+    db.run("INSERT INTO clinics (name, address, phone, email) VALUES (?,?,?,?)", ['Modern Clinic - Main', '12 Boulevard Mohammed V, Marrakech', '+212524123456', 'contact@modern-clinic.ma']);
+    db.run("INSERT INTO clinics (name, address, phone, email) VALUES (?,?,?,?)", ['Modern Clinic - Branch', '45 Avenue Hassan II, Casablanca', '+212522789012', 'casa@modern-clinic.ma']);
+  }
+
+  // Seed consent form templates
+  const consentCount = db.exec("SELECT COUNT(*) as c FROM consent_forms")[0]?.values[0][0] || 0;
+  if (consentCount === 0) {
+    db.run("INSERT INTO consent_forms (title, content, category, is_template) VALUES (?,?,?,1)", ['General Treatment Consent', 'I, the undersigned patient, hereby consent to the medical treatment and procedures recommended by my treating physician. I understand the nature, risks, benefits, and alternatives of the proposed treatment. I have been given the opportunity to ask questions and have received satisfactory answers.\n\nI understand that:\n1. No guarantees have been made regarding the outcome of the treatment.\n2. I may withdraw my consent at any time.\n3. My medical information will be kept confidential.\n\nI voluntarily consent to the proposed treatment.', 'general']);
+    db.run("INSERT INTO consent_forms (title, content, category, is_template) VALUES (?,?,?,1)", ['Surgical Procedure Consent', 'I hereby authorize the physician and medical team to perform the following surgical procedure. I have been informed of the nature, purpose, risks, benefits, and alternatives. I understand post-operative care instructions and agree to follow medical advice.\n\nProcedure: _______________\nAnesthesia type: _______________\n\nI have read and understood the above information.', 'surgical']);
+    db.run("INSERT INTO consent_forms (title, content, category, is_template) VALUES (?,?,?,1)", ['Data Privacy Consent', 'I consent to the collection, processing, and storage of my personal and medical data by the clinic for the purposes of medical treatment, appointment scheduling, billing, and compliance with legal obligations.\n\nI understand that my data will be handled in accordance with applicable data protection regulations.', 'privacy']);
+  }
+
   // Seed if empty
   const userCount = db.exec("SELECT COUNT(*) as c FROM users")[0]?.values[0][0] || 0;
   if (userCount === 0) seedData();
@@ -2081,6 +2319,476 @@ app.post('/api/import/appointments', authenticate, (req, res) => {
   audit(req, 'import', 'appointments', null, `Imported ${imported}, skipped ${skipped}`);
   autoSave();
   res.json({ imported, skipped, total: rows.length });
+});
+
+// ── Patient Documents ────────────────────────────────────────────────────────
+
+app.get('/api/patients/:patientId/docs', authenticate, (req, res) => {
+  const rows = getAll('SELECT id, patient_id, name, description, file_type, file_size, category, uploaded_by, created_at FROM patient_documents WHERE patient_id = ? ORDER BY created_at DESC', [req.params.patientId]);
+  res.json({ data: rows });
+});
+
+app.post('/api/patients/:patientId/docs', authenticate, (req, res) => {
+  const { name, description, file_type, file_size, file_data, category } = req.body;
+  if (!name) return res.status(400).json({ message: 'name required' });
+  const id = runSql('INSERT INTO patient_documents (patient_id, name, description, file_type, file_size, file_data, category, uploaded_by) VALUES (?,?,?,?,?,?,?,?)',
+    [req.params.patientId, name, description || null, file_type || null, file_size || null, file_data || null, category || 'general', req.user.id]);
+  audit(req, 'create', 'patient_documents', id, `Uploaded ${name}`);
+  const doc = getOne('SELECT id, patient_id, name, description, file_type, file_size, category, uploaded_by, created_at FROM patient_documents WHERE id = ?', [id]);
+  res.status(201).json({ data: doc });
+});
+
+app.get('/api/docs/:id', authenticate, (req, res) => {
+  const doc = getOne('SELECT * FROM patient_documents WHERE id = ?', [req.params.id]);
+  if (!doc) return res.status(404).json({ message: 'Not found' });
+  res.json({ data: doc });
+});
+
+app.delete('/api/docs/:id', authenticate, (req, res) => {
+  const doc = getOne('SELECT id, name FROM patient_documents WHERE id = ?', [req.params.id]);
+  if (!doc) return res.status(404).json({ message: 'Not found' });
+  db.run('DELETE FROM patient_documents WHERE id = ?', [req.params.id]);
+  audit(req, 'delete', 'patient_documents', doc.id, `Deleted ${doc.name}`);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Recurring Appointments ──────────────────────────────────────────────────
+
+app.get('/api/recurring-appointments', authenticate, (req, res) => {
+  const { patient_id } = req.query;
+  let sql = `SELECT ra.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name
+    FROM recurring_appointments ra
+    LEFT JOIN patients p ON ra.patient_id = p.id
+    LEFT JOIN users u ON ra.doctor_id = u.id`;
+  const params = [];
+  if (patient_id) { sql += ' WHERE ra.patient_id = ?'; params.push(patient_id); }
+  sql += ' ORDER BY ra.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/recurring-appointments', authenticate, (req, res) => {
+  const { patient_id, doctor_id, frequency, day_of_week, day_of_month, time, duration_minutes, type, reason, start_date, end_date } = req.body;
+  if (!patient_id || !time || !start_date) return res.status(400).json({ message: 'patient_id, time, start_date required' });
+  const id = runSql('INSERT INTO recurring_appointments (patient_id, doctor_id, frequency, day_of_week, day_of_month, time, duration_minutes, type, reason, start_date, end_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    [patient_id, doctor_id || null, frequency || 'weekly', day_of_week || null, day_of_month || null, time, duration_minutes || 30, type || 'consultation', reason || null, start_date, end_date || null]);
+  audit(req, 'create', 'recurring_appointments', id, `Created recurring for patient ${patient_id}`);
+  const row = getOne('SELECT * FROM recurring_appointments WHERE id = ?', [id]);
+  res.status(201).json({ data: row });
+});
+
+app.put('/api/recurring-appointments/:id', authenticate, (req, res) => {
+  const { frequency, day_of_week, day_of_month, time, duration_minutes, type, reason, end_date, is_active } = req.body;
+  db.run('UPDATE recurring_appointments SET frequency=?, day_of_week=?, day_of_month=?, time=?, duration_minutes=?, type=?, reason=?, end_date=?, is_active=? WHERE id=?',
+    [frequency || 'weekly', day_of_week || null, day_of_month || null, time, duration_minutes || 30, type || 'consultation', reason || null, end_date || null, is_active ?? 1, req.params.id]);
+  autoSave();
+  const row = getOne('SELECT * FROM recurring_appointments WHERE id = ?', [req.params.id]);
+  res.json({ data: row });
+});
+
+app.delete('/api/recurring-appointments/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM recurring_appointments WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.post('/api/recurring-appointments/:id/generate', authenticate, (req, res) => {
+  const ra = getOne('SELECT * FROM recurring_appointments WHERE id = ?', [req.params.id]);
+  if (!ra) return res.status(404).json({ message: 'Not found' });
+  const { until } = req.body;
+  const endDate = until ? new Date(until) : new Date(Date.now() + 30 * 86400000);
+  let current = new Date(ra.start_date);
+  if (current < new Date()) current = new Date();
+  let generated = 0;
+  while (current <= endDate && generated < 52) {
+    let shouldCreate = false;
+    if (ra.frequency === 'daily') shouldCreate = true;
+    else if (ra.frequency === 'weekly' && (ra.day_of_week === null || current.getDay() === ra.day_of_week)) shouldCreate = true;
+    else if (ra.frequency === 'monthly' && (ra.day_of_month === null || current.getDate() === ra.day_of_month)) shouldCreate = true;
+    if (shouldCreate) {
+      const scheduled = current.toISOString().split('T')[0] + 'T' + ra.time + ':00';
+      const exists = getOne('SELECT id FROM appointments WHERE patient_id=? AND scheduled_at=?', [ra.patient_id, scheduled]);
+      if (!exists) {
+        runSql('INSERT INTO appointments (patient_id, doctor_id, scheduled_at, duration_minutes, type, reason, status) VALUES (?,?,?,?,?,?,?)',
+          [ra.patient_id, ra.doctor_id || null, scheduled, ra.duration_minutes, ra.type, ra.reason || null, 'scheduled']);
+        generated++;
+      }
+    }
+    if (ra.frequency === 'daily') current.setDate(current.getDate() + 1);
+    else if (ra.frequency === 'weekly') current.setDate(current.getDate() + 1);
+    else if (ra.frequency === 'monthly') current.setDate(current.getDate() + 1);
+    else current.setDate(current.getDate() + 1);
+  }
+  audit(req, 'generate', 'recurring_appointments', ra.id, `Generated ${generated} appointments`);
+  res.json({ generated });
+});
+
+// ── Patient Allergies ───────────────────────────────────────────────────────
+
+app.get('/api/patients/:patientId/allergies', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM patient_allergies WHERE patient_id = ? ORDER BY created_at DESC', [req.params.patientId]) });
+});
+
+app.post('/api/patients/:patientId/allergies', authenticate, (req, res) => {
+  const { allergen, severity, reaction, noted_date, notes } = req.body;
+  if (!allergen) return res.status(400).json({ message: 'allergen required' });
+  const id = runSql('INSERT INTO patient_allergies (patient_id, allergen, severity, reaction, noted_date, notes) VALUES (?,?,?,?,?,?)',
+    [req.params.patientId, allergen, severity || 'moderate', reaction || null, noted_date || null, notes || null]);
+  audit(req, 'create', 'patient_allergies', id, `Added allergy: ${allergen}`);
+  res.status(201).json({ data: getOne('SELECT * FROM patient_allergies WHERE id = ?', [id]) });
+});
+
+app.delete('/api/allergies/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM patient_allergies WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Rooms & Resource Management ─────────────────────────────────────────────
+
+app.get('/api/rooms', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM rooms ORDER BY name') });
+});
+
+app.post('/api/rooms', authenticate, (req, res) => {
+  const { name, type, floor, capacity, equipment, status, notes } = req.body;
+  if (!name) return res.status(400).json({ message: 'name required' });
+  const id = runSql('INSERT INTO rooms (name, type, floor, capacity, equipment, status, notes) VALUES (?,?,?,?,?,?,?)',
+    [name, type || 'consultation', floor || null, capacity || 1, equipment || null, status || 'available', notes || null]);
+  audit(req, 'create', 'rooms', id, `Created room: ${name}`);
+  res.status(201).json({ data: getOne('SELECT * FROM rooms WHERE id = ?', [id]) });
+});
+
+app.put('/api/rooms/:id', authenticate, (req, res) => {
+  const { name, type, floor, capacity, equipment, status, notes } = req.body;
+  db.run('UPDATE rooms SET name=?, type=?, floor=?, capacity=?, equipment=?, status=?, notes=? WHERE id=?',
+    [name, type || 'consultation', floor || null, capacity || 1, equipment || null, status || 'available', notes || null, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM rooms WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/rooms/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM rooms WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/room-bookings', authenticate, (req, res) => {
+  const { room_id, date } = req.query;
+  let sql = `SELECT rb.*, r.name as room_name, u.name as booked_by_name
+    FROM room_bookings rb
+    LEFT JOIN rooms r ON rb.room_id = r.id
+    LEFT JOIN users u ON rb.booked_by = u.id`;
+  const params = [];
+  const conditions = [];
+  if (room_id) { conditions.push('rb.room_id = ?'); params.push(room_id); }
+  if (date) { conditions.push("rb.start_time LIKE ?"); params.push(date + '%'); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY rb.start_time';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/room-bookings', authenticate, (req, res) => {
+  const { room_id, appointment_id, start_time, end_time, purpose } = req.body;
+  if (!room_id || !start_time || !end_time) return res.status(400).json({ message: 'room_id, start_time, end_time required' });
+  const conflict = getOne('SELECT id FROM room_bookings WHERE room_id = ? AND start_time < ? AND end_time > ?', [room_id, end_time, start_time]);
+  if (conflict) return res.status(409).json({ message: 'Room is already booked for this time slot' });
+  const id = runSql('INSERT INTO room_bookings (room_id, appointment_id, booked_by, start_time, end_time, purpose) VALUES (?,?,?,?,?,?)',
+    [room_id, appointment_id || null, req.user.id, start_time, end_time, purpose || null]);
+  res.status(201).json({ data: getOne('SELECT * FROM room_bookings WHERE id = ?', [id]) });
+});
+
+app.delete('/api/room-bookings/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM room_bookings WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Expense Budgets ─────────────────────────────────────────────────────────
+
+app.get('/api/expense-budgets', authenticate, (req, res) => {
+  const { month } = req.query;
+  let sql = 'SELECT * FROM expense_budgets';
+  const params = [];
+  if (month) { sql += ' WHERE month = ?'; params.push(month); }
+  sql += ' ORDER BY month DESC, category';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/expense-budgets', authenticate, (req, res) => {
+  const { category, month, budget_amount, notes } = req.body;
+  if (!category || !month || !budget_amount) return res.status(400).json({ message: 'category, month, budget_amount required' });
+  const existing = getOne('SELECT id FROM expense_budgets WHERE category = ? AND month = ?', [category, month]);
+  if (existing) {
+    db.run('UPDATE expense_budgets SET budget_amount = ?, notes = ? WHERE id = ?', [budget_amount, notes || null, existing.id]);
+    autoSave();
+    return res.json({ data: getOne('SELECT * FROM expense_budgets WHERE id = ?', [existing.id]) });
+  }
+  const id = runSql('INSERT INTO expense_budgets (category, month, budget_amount, notes) VALUES (?,?,?,?)',
+    [category, month, budget_amount, notes || null]);
+  res.status(201).json({ data: getOne('SELECT * FROM expense_budgets WHERE id = ?', [id]) });
+});
+
+app.delete('/api/expense-budgets/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM expense_budgets WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/expense-budgets/summary', authenticate, (req, res) => {
+  const { month } = req.query;
+  if (!month) return res.status(400).json({ message: 'month required (YYYY-MM)' });
+  const budgets = getAll('SELECT * FROM expense_budgets WHERE month = ?', [month]);
+  const expenses = getAll("SELECT category, SUM(amount) as spent FROM expenses WHERE strftime('%Y-%m', date) = ? GROUP BY category", [month]);
+  const expenseMap = {};
+  expenses.forEach(e => expenseMap[e.category] = e.spent);
+  const summary = budgets.map(b => ({
+    ...b,
+    spent: expenseMap[b.category] || 0,
+    remaining: b.budget_amount - (expenseMap[b.category] || 0),
+    percentage: Math.round(((expenseMap[b.category] || 0) / b.budget_amount) * 100)
+  }));
+  res.json({ data: summary });
+});
+
+// ── Task Board ──────────────────────────────────────────────────────────────
+
+app.get('/api/tasks', authenticate, (req, res) => {
+  const { status, assigned_to, category } = req.query;
+  let sql = `SELECT t.*, u1.name as assigned_to_name, u2.name as created_by_name
+    FROM tasks t
+    LEFT JOIN users u1 ON t.assigned_to = u1.id
+    LEFT JOIN users u2 ON t.created_by = u2.id`;
+  const params = [];
+  const conditions = [];
+  if (status) { conditions.push('t.status = ?'); params.push(status); }
+  if (assigned_to) { conditions.push('t.assigned_to = ?'); params.push(assigned_to); }
+  if (category) { conditions.push('t.category = ?'); params.push(category); }
+  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+  sql += ' ORDER BY CASE t.priority WHEN "urgent" THEN 0 WHEN "high" THEN 1 WHEN "medium" THEN 2 ELSE 3 END, t.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/tasks', authenticate, (req, res) => {
+  const { title, description, status, priority, assigned_to, due_date, category } = req.body;
+  if (!title) return res.status(400).json({ message: 'title required' });
+  const id = runSql('INSERT INTO tasks (title, description, status, priority, assigned_to, created_by, due_date, category) VALUES (?,?,?,?,?,?,?,?)',
+    [title, description || null, status || 'todo', priority || 'medium', assigned_to || null, req.user.id, due_date || null, category || 'general']);
+  audit(req, 'create', 'tasks', id, `Created task: ${title}`);
+  const task = getOne(`SELECT t.*, u1.name as assigned_to_name, u2.name as created_by_name FROM tasks t LEFT JOIN users u1 ON t.assigned_to = u1.id LEFT JOIN users u2 ON t.created_by = u2.id WHERE t.id = ?`, [id]);
+  res.status(201).json({ data: task });
+});
+
+app.put('/api/tasks/:id', authenticate, (req, res) => {
+  const { title, description, status, priority, assigned_to, due_date, category } = req.body;
+  const completed_at = status === 'done' ? new Date().toISOString() : null;
+  db.run('UPDATE tasks SET title=?, description=?, status=?, priority=?, assigned_to=?, due_date=?, category=?, completed_at=? WHERE id=?',
+    [title, description || null, status || 'todo', priority || 'medium', assigned_to || null, due_date || null, category || 'general', completed_at, req.params.id]);
+  autoSave();
+  const task = getOne(`SELECT t.*, u1.name as assigned_to_name, u2.name as created_by_name FROM tasks t LEFT JOIN users u1 ON t.assigned_to = u1.id LEFT JOIN users u2 ON t.created_by = u2.id WHERE t.id = ?`, [req.params.id]);
+  res.json({ data: task });
+});
+
+app.patch('/api/tasks/:id/status', authenticate, (req, res) => {
+  const { status } = req.body;
+  const completed_at = status === 'done' ? new Date().toISOString() : null;
+  db.run('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?', [status, completed_at, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/tasks/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM tasks WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Referral Tracking Dashboard ─────────────────────────────────────────────
+
+app.get('/api/referrals/dashboard', authenticate, (req, res) => {
+  const total = countSql('SELECT COUNT(*) FROM referrals');
+  const pending = countSql("SELECT COUNT(*) FROM referrals WHERE status = 'pending'");
+  const accepted = countSql("SELECT COUNT(*) FROM referrals WHERE status = 'accepted'");
+  const completed = countSql("SELECT COUNT(*) FROM referrals WHERE status = 'completed'");
+  const rejected = countSql("SELECT COUNT(*) FROM referrals WHERE status = 'rejected'");
+  const byPriority = getAll("SELECT priority, COUNT(*) as count FROM referrals GROUP BY priority");
+  const recent = getAll(`SELECT r.*, p.first_name || ' ' || p.last_name as patient_name,
+    u1.name as referring_doctor_name, u2.name as referred_to_name
+    FROM referrals r
+    LEFT JOIN patients p ON r.patient_id = p.id
+    LEFT JOIN users u1 ON r.referring_doctor_id = u1.id
+    LEFT JOIN users u2 ON r.referred_to_doctor_id = u2.id
+    ORDER BY r.created_at DESC LIMIT 20`);
+  res.json({ data: { total, pending, accepted, completed, rejected, byPriority, recent } });
+});
+
+// ── Staff Reviews ───────────────────────────────────────────────────────────
+
+app.get('/api/staff-reviews', authenticate, (req, res) => {
+  const { employee_id } = req.query;
+  let sql = `SELECT sr.*, u1.name as employee_name, u1.role as employee_role, u2.name as reviewer_name
+    FROM staff_reviews sr
+    LEFT JOIN users u1 ON sr.employee_id = u1.id
+    LEFT JOIN users u2 ON sr.reviewer_id = u2.id`;
+  const params = [];
+  if (employee_id) { sql += ' WHERE sr.employee_id = ?'; params.push(employee_id); }
+  sql += ' ORDER BY sr.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/staff-reviews', authenticate, (req, res) => {
+  const { employee_id, review_period, overall_rating, clinical_skills, communication, punctuality, teamwork, strengths, improvements, goals, notes } = req.body;
+  if (!employee_id || !review_period || !overall_rating) return res.status(400).json({ message: 'employee_id, review_period, overall_rating required' });
+  const id = runSql('INSERT INTO staff_reviews (employee_id, reviewer_id, review_period, overall_rating, clinical_skills, communication, punctuality, teamwork, strengths, improvements, goals, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    [employee_id, req.user.id, review_period, overall_rating, clinical_skills || null, communication || null, punctuality || null, teamwork || null, strengths || null, improvements || null, goals || null, notes || null]);
+  audit(req, 'create', 'staff_reviews', id, `Review for employee ${employee_id}`);
+  const review = getOne(`SELECT sr.*, u1.name as employee_name, u2.name as reviewer_name FROM staff_reviews sr LEFT JOIN users u1 ON sr.employee_id = u1.id LEFT JOIN users u2 ON sr.reviewer_id = u2.id WHERE sr.id = ?`, [id]);
+  res.status(201).json({ data: review });
+});
+
+app.delete('/api/staff-reviews/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM staff_reviews WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Clinical Notes ──────────────────────────────────────────────────────────
+
+app.get('/api/patients/:patientId/clinical-notes', authenticate, (req, res) => {
+  const rows = getAll(`SELECT cn.*, u.name as doctor_name FROM clinical_notes cn LEFT JOIN users u ON cn.doctor_id = u.id WHERE cn.patient_id = ? ORDER BY cn.is_pinned DESC, cn.created_at DESC`, [req.params.patientId]);
+  res.json({ data: rows });
+});
+
+app.post('/api/patients/:patientId/clinical-notes', authenticate, (req, res) => {
+  const { title, content, visit_id, template_type, is_pinned } = req.body;
+  if (!title || !content) return res.status(400).json({ message: 'title and content required' });
+  const id = runSql('INSERT INTO clinical_notes (patient_id, doctor_id, visit_id, title, content, template_type, is_pinned) VALUES (?,?,?,?,?,?,?)',
+    [req.params.patientId, req.user.id, visit_id || null, title, content, template_type || null, is_pinned || 0]);
+  audit(req, 'create', 'clinical_notes', id, `Note: ${title}`);
+  const note = getOne('SELECT cn.*, u.name as doctor_name FROM clinical_notes cn LEFT JOIN users u ON cn.doctor_id = u.id WHERE cn.id = ?', [id]);
+  res.status(201).json({ data: note });
+});
+
+app.put('/api/clinical-notes/:id', authenticate, (req, res) => {
+  const { title, content, template_type, is_pinned } = req.body;
+  db.run("UPDATE clinical_notes SET title=?, content=?, template_type=?, is_pinned=?, updated_at=datetime('now') WHERE id=?",
+    [title, content, template_type || null, is_pinned || 0, req.params.id]);
+  autoSave();
+  const note = getOne('SELECT cn.*, u.name as doctor_name FROM clinical_notes cn LEFT JOIN users u ON cn.doctor_id = u.id WHERE cn.id = ?', [req.params.id]);
+  res.json({ data: note });
+});
+
+app.delete('/api/clinical-notes/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM clinical_notes WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Multi-branch (Clinics) ──────────────────────────────────────────────────
+
+app.get('/api/clinics', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM clinics ORDER BY name') });
+});
+
+app.post('/api/clinics', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { name, address, phone, email } = req.body;
+  if (!name) return res.status(400).json({ message: 'name required' });
+  const id = runSql('INSERT INTO clinics (name, address, phone, email) VALUES (?,?,?,?)',
+    [name, address || null, phone || null, email || null]);
+  audit(req, 'create', 'clinics', id, `Created clinic: ${name}`);
+  res.status(201).json({ data: getOne('SELECT * FROM clinics WHERE id = ?', [id]) });
+});
+
+app.put('/api/clinics/:id', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  const { name, address, phone, email, is_active } = req.body;
+  db.run('UPDATE clinics SET name=?, address=?, phone=?, email=?, is_active=? WHERE id=?',
+    [name, address || null, phone || null, email || null, is_active ?? 1, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM clinics WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/clinics/:id', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+  db.run('DELETE FROM clinics WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+// ── Dashboard Widgets ───────────────────────────────────────────────────────
+
+app.get('/api/dashboard-widgets', authenticate, (req, res) => {
+  res.json({ data: getAll('SELECT * FROM dashboard_widgets WHERE user_id = ? ORDER BY position', [req.user.id]) });
+});
+
+app.post('/api/dashboard-widgets', authenticate, (req, res) => {
+  const { widgets } = req.body;
+  if (!widgets || !Array.isArray(widgets)) return res.status(400).json({ message: 'widgets array required' });
+  db.run('DELETE FROM dashboard_widgets WHERE user_id = ?', [req.user.id]);
+  for (const w of widgets) {
+    runSql('INSERT INTO dashboard_widgets (user_id, widget_key, position, width, is_visible, config) VALUES (?,?,?,?,?,?)',
+      [req.user.id, w.widget_key, w.position ?? 0, w.width || 'half', w.is_visible ?? 1, w.config ? JSON.stringify(w.config) : null]);
+  }
+  autoSave();
+  res.json({ data: getAll('SELECT * FROM dashboard_widgets WHERE user_id = ? ORDER BY position', [req.user.id]) });
+});
+
+// ── Consent Forms ───────────────────────────────────────────────────────────
+
+app.get('/api/consent-forms', authenticate, (req, res) => {
+  const { is_template } = req.query;
+  let sql = 'SELECT * FROM consent_forms';
+  const params = [];
+  if (is_template !== undefined) { sql += ' WHERE is_template = ?'; params.push(is_template); }
+  sql += ' ORDER BY created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/consent-forms', authenticate, (req, res) => {
+  const { title, content, category, is_template } = req.body;
+  if (!title || !content) return res.status(400).json({ message: 'title and content required' });
+  const id = runSql('INSERT INTO consent_forms (title, content, category, is_template) VALUES (?,?,?,?)',
+    [title, content, category || 'general', is_template || 0]);
+  audit(req, 'create', 'consent_forms', id, `Created form: ${title}`);
+  res.status(201).json({ data: getOne('SELECT * FROM consent_forms WHERE id = ?', [id]) });
+});
+
+app.put('/api/consent-forms/:id', authenticate, (req, res) => {
+  const { title, content, category, is_template } = req.body;
+  db.run('UPDATE consent_forms SET title=?, content=?, category=?, is_template=? WHERE id=?',
+    [title, content, category || 'general', is_template || 0, req.params.id]);
+  autoSave();
+  res.json({ data: getOne('SELECT * FROM consent_forms WHERE id = ?', [req.params.id]) });
+});
+
+app.delete('/api/consent-forms/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM consent_forms WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/patients/:patientId/consents', authenticate, (req, res) => {
+  const rows = getAll(`SELECT pc.*, cf.title as form_title, cf.category FROM patient_consents pc
+    LEFT JOIN consent_forms cf ON pc.form_id = cf.id
+    WHERE pc.patient_id = ? ORDER BY pc.created_at DESC`, [req.params.patientId]);
+  res.json({ data: rows });
+});
+
+app.post('/api/patients/:patientId/consents', authenticate, (req, res) => {
+  const { form_id, signature_data, witness_name, notes } = req.body;
+  if (!form_id) return res.status(400).json({ message: 'form_id required' });
+  const id = runSql('INSERT INTO patient_consents (patient_id, form_id, signature_data, witness_name, notes) VALUES (?,?,?,?,?)',
+    [req.params.patientId, form_id, signature_data || null, witness_name || null, notes || null]);
+  audit(req, 'create', 'patient_consents', id, `Patient ${req.params.patientId} signed form ${form_id}`);
+  const consent = getOne(`SELECT pc.*, cf.title as form_title FROM patient_consents pc LEFT JOIN consent_forms cf ON pc.form_id = cf.id WHERE pc.id = ?`, [id]);
+  res.status(201).json({ data: consent });
+});
+
+app.delete('/api/patient-consents/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM patient_consents WHERE id = ?', [req.params.id]);
+  autoSave();
+  res.json({ message: 'Deleted' });
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────

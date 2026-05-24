@@ -28,6 +28,17 @@ import {
   CalendarDays,
   MessageSquare,
   Star,
+  DoorOpen,
+  ListTodo,
+  ArrowRightLeft,
+  ClipboardCheck,
+  StickyNote,
+  Building2,
+  LayoutGrid,
+  FileSignature,
+  Repeat,
+  ShieldAlert,
+  PieChart,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -75,6 +86,14 @@ const navItems: NavItem[] = [
   { labelKey: "nav.users", label: "Staff", href: "/users", icon: UserCog, roles: ["admin"] },
   { labelKey: "nav.bulk_notify", label: "Notifications", href: "/bulk-notify", icon: Bell, roles: ["admin"] },
   { labelKey: "nav.waiting_room", label: "Waiting Room", href: "/waiting-room", icon: Monitor, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.rooms", label: "Rooms", href: "/rooms", icon: DoorOpen, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.tasks", label: "Task Board", href: "/tasks", icon: ListTodo, roles: ["admin", "doctor", "receptionist"] },
+  { labelKey: "nav.referral_tracking", label: "Referrals", href: "/referral-tracking", icon: ArrowRightLeft, roles: ["admin", "doctor"] },
+  { labelKey: "nav.staff_reviews", label: "Reviews", href: "/staff-reviews", icon: ClipboardCheck, roles: ["admin"] },
+  { labelKey: "nav.clinics", label: "Branches", href: "/clinics", icon: Building2, roles: ["admin"] },
+  { labelKey: "nav.recurring_appointments", label: "Recurring", href: "/recurring-appointments", icon: Repeat, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.budgeting", label: "Budgeting", href: "/budgeting", icon: PieChart, roles: ["admin", "accountant"] },
+  { labelKey: "nav.consent_forms", label: "Consents", href: "/consent-forms", icon: FileSignature, roles: ["admin", "doctor"] },
   { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },
   { labelKey: "nav.settings", label: "Settings", href: "/settings", icon: Settings, roles: ["admin"] },
 ]
