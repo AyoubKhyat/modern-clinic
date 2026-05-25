@@ -429,3 +429,27 @@ export const prescriptionPrintApi = {
 export const medicalSummaryApi = {
   get: (patientId: number) => api.get(`/patients/${patientId}/medical-summary`),
 };
+
+export const servicesApi = {
+  list: (params?: Record<string, any>) => api.get('/services', { params }),
+  create: (data: any) => api.post('/services', data),
+  update: (id: number, data: any) => api.put(`/services/${id}`, data),
+  delete: (id: number) => api.delete(`/services/${id}`),
+  categories: () => api.get('/services/categories'),
+};
+
+export const waitlistApi = {
+  list: (params?: Record<string, any>) => api.get('/waitlist', { params }),
+  create: (data: any) => api.post('/waitlist', data),
+  update: (id: number, data: any) => api.patch(`/waitlist/${id}`, data),
+  delete: (id: number) => api.delete(`/waitlist/${id}`),
+  convert: (id: number, data: any) => api.post(`/waitlist/${id}/convert`, data),
+};
+
+export const educationApi = {
+  list: (params?: Record<string, any>) => api.get('/education', { params }),
+  get: (id: number) => api.get(`/education/${id}`),
+  create: (data: any) => api.post('/education', data),
+  update: (id: number, data: any) => api.put(`/education/${id}`, data),
+  delete: (id: number) => api.delete(`/education/${id}`),
+};

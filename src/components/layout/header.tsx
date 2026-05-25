@@ -69,6 +69,9 @@ const routeLabels: Record<string, string> = {
   shifts: "Shift Management",
   suppliers: "Suppliers",
   "tv-dashboard": "TV Dashboard",
+  services: "Service Catalog",
+  waitlist: "Appointment Waitlist",
+  education: "Patient Education",
   settings: "Settings",
 }
 

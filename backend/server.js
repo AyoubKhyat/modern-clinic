@@ -790,6 +790,91 @@ async function initDatabase() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      description TEXT,
+      price REAL DEFAULT 0,
+      duration_minutes INTEGER DEFAULT 30,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS appointment_waitlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      doctor_id INTEGER,
+      preferred_date TEXT,
+      preferred_time TEXT,
+      service_id INTEGER,
+      status TEXT DEFAULT 'waiting',
+      priority INTEGER DEFAULT 0,
+      notes TEXT,
+      notified_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES patients(id),
+      FOREIGN KEY (doctor_id) REFERENCES users(id),
+      FOREIGN KEY (service_id) REFERENCES services(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS education_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT,
+      category TEXT DEFAULT 'general',
+      tags TEXT,
+      author_id INTEGER,
+      is_published INTEGER DEFAULT 0,
+      views INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (author_id) REFERENCES users(id)
+    )
+  `);
+
+  // Seed services if empty
+  const serviceCount = db.exec("SELECT COUNT(*) as c FROM services")[0]?.values[0][0] || 0;
+  if (serviceCount === 0) {
+    const services = [
+      ['General Consultation', 'consultation', 'Standard doctor consultation', 300, 30],
+      ['Specialist Consultation', 'consultation', 'Specialist doctor visit', 500, 45],
+      ['Follow-up Visit', 'consultation', 'Follow-up appointment', 200, 20],
+      ['Blood Test - CBC', 'laboratory', 'Complete blood count', 150, 15],
+      ['Blood Test - Full Panel', 'laboratory', 'Comprehensive metabolic panel', 400, 20],
+      ['X-Ray', 'imaging', 'Standard X-ray examination', 350, 30],
+      ['Ultrasound', 'imaging', 'Ultrasound examination', 500, 45],
+      ['ECG', 'cardiology', 'Electrocardiogram', 250, 20],
+      ['Vaccination', 'preventive', 'Standard vaccination', 200, 15],
+      ['Minor Surgery', 'surgery', 'Minor outpatient procedure', 1500, 60],
+      ['Physical Therapy Session', 'therapy', 'PT session', 350, 45],
+      ['Dental Cleaning', 'dental', 'Professional dental cleaning', 400, 30],
+    ];
+    for (const s of services) {
+      db.run("INSERT INTO services (name, category, description, price, duration_minutes) VALUES (?,?,?,?,?)", s);
+    }
+  }
+
+  // Seed education articles if empty
+  const articleCount = db.exec("SELECT COUNT(*) as c FROM education_articles")[0]?.values[0][0] || 0;
+  if (articleCount === 0) {
+    const articles = [
+      ['Understanding Blood Pressure', 'Learn what blood pressure numbers mean and how to maintain healthy levels.', 'cardiology', 'blood pressure,heart,prevention', 1],
+      ['Diabetes Management Tips', 'Daily habits and dietary advice for managing diabetes effectively.', 'endocrinology', 'diabetes,diet,lifestyle', 1],
+      ['Importance of Vaccinations', 'Why vaccines matter and the recommended schedule for all ages.', 'preventive', 'vaccination,immunity,children', 1],
+      ['Post-Surgery Care Guide', 'Essential steps to follow after any surgical procedure.', 'surgery', 'surgery,recovery,care', 1],
+      ['Healthy Eating Basics', 'A simple guide to balanced nutrition for the whole family.', 'nutrition', 'diet,nutrition,health', 1],
+    ];
+    for (const a of articles) {
+      db.run("INSERT INTO education_articles (title, content, category, tags, is_published) VALUES (?,?,?,?,?)", a);
+    }
+  }
+
   // Seed suppliers if empty
   const supplierCount = db.exec("SELECT COUNT(*) as c FROM suppliers")[0]?.values[0][0] || 0;
   if (supplierCount === 0) {
@@ -3176,6 +3261,146 @@ app.get('/api/prescriptions/:id/print-data', authenticate, (req, res) => {
   const items = getAll('SELECT * FROM prescription_items WHERE prescription_id = ?', [req.params.id]);
   const clinic = getOne('SELECT * FROM clinics WHERE id = 1') || { name: 'Modern Clinic', address: '', phone: '', email: '' };
   res.json({ data: { prescription, patient, items, clinic } });
+});
+
+// ── Service Catalog ─────────────────────────────────────────────────────────
+
+app.get('/api/services', authenticate, (req, res) => {
+  const { category, active } = req.query;
+  let sql = 'SELECT * FROM services WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category = ?'; params.push(category); }
+  if (active !== undefined) { sql += ' AND is_active = ?'; params.push(active === 'true' ? 1 : 0); }
+  sql += ' ORDER BY category, name';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/services', authenticate, (req, res) => {
+  const { name, category, description, price, duration_minutes, is_active } = req.body;
+  const r = db.run('INSERT INTO services (name, category, description, price, duration_minutes, is_active) VALUES (?,?,?,?,?,?)',
+    [name, category || 'general', description || null, price || 0, duration_minutes || 30, is_active !== undefined ? (is_active ? 1 : 0) : 1]);
+  saveDb();
+  res.json({ data: { id: r.lastInsertRowid ?? db.exec("SELECT last_insert_rowid()")[0]?.values[0][0] } });
+});
+
+app.put('/api/services/:id', authenticate, (req, res) => {
+  const { name, category, description, price, duration_minutes, is_active } = req.body;
+  db.run('UPDATE services SET name=?, category=?, description=?, price=?, duration_minutes=?, is_active=? WHERE id=?',
+    [name, category || 'general', description || null, price || 0, duration_minutes || 30, is_active !== undefined ? (is_active ? 1 : 0) : 1, req.params.id]);
+  saveDb();
+  res.json({ message: 'Updated' });
+});
+
+app.delete('/api/services/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM services WHERE id = ?', [req.params.id]);
+  saveDb();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/services/categories', authenticate, (_req, res) => {
+  const rows = getAll('SELECT DISTINCT category FROM services ORDER BY category');
+  res.json({ data: rows.map(r => r.category) });
+});
+
+// ── Appointment Waitlist ────────────────────────────────────────────────────
+
+app.get('/api/waitlist', authenticate, (req, res) => {
+  const { status } = req.query;
+  let sql = `SELECT w.*, p.first_name || ' ' || p.last_name as patient_name, u.name as doctor_name, s.name as service_name
+    FROM appointment_waitlist w
+    LEFT JOIN patients p ON w.patient_id = p.id
+    LEFT JOIN users u ON w.doctor_id = u.id
+    LEFT JOIN services s ON w.service_id = s.id
+    WHERE 1=1`;
+  const params = [];
+  if (status) { sql += ' AND w.status = ?'; params.push(status); }
+  sql += ' ORDER BY w.priority DESC, w.created_at ASC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.post('/api/waitlist', authenticate, (req, res) => {
+  const { patient_id, doctor_id, preferred_date, preferred_time, service_id, priority, notes } = req.body;
+  const r = db.run('INSERT INTO appointment_waitlist (patient_id, doctor_id, preferred_date, preferred_time, service_id, priority, notes) VALUES (?,?,?,?,?,?,?)',
+    [patient_id, doctor_id || null, preferred_date || null, preferred_time || null, service_id || null, priority || 0, notes || null]);
+  saveDb();
+  res.json({ data: { id: r.lastInsertRowid ?? db.exec("SELECT last_insert_rowid()")[0]?.values[0][0] } });
+});
+
+app.patch('/api/waitlist/:id', authenticate, (req, res) => {
+  const { status, notified_at } = req.body;
+  const sets = [];
+  const params = [];
+  if (status) { sets.push('status = ?'); params.push(status); }
+  if (notified_at) { sets.push('notified_at = ?'); params.push(notified_at); }
+  if (sets.length === 0) return res.status(400).json({ message: 'Nothing to update' });
+  params.push(req.params.id);
+  db.run(`UPDATE appointment_waitlist SET ${sets.join(', ')} WHERE id = ?`, params);
+  saveDb();
+  res.json({ message: 'Updated' });
+});
+
+app.delete('/api/waitlist/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM appointment_waitlist WHERE id = ?', [req.params.id]);
+  saveDb();
+  res.json({ message: 'Deleted' });
+});
+
+app.post('/api/waitlist/:id/convert', authenticate, (req, res) => {
+  const entry = getOne('SELECT * FROM appointment_waitlist WHERE id = ?', [req.params.id]);
+  if (!entry) return res.status(404).json({ message: 'Not found' });
+  const { scheduled_at } = req.body;
+  if (!scheduled_at) return res.status(400).json({ message: 'scheduled_at required' });
+  db.run('INSERT INTO appointments (patient_id, doctor_id, scheduled_at, status, type) VALUES (?,?,?,?,?)',
+    [entry.patient_id, entry.doctor_id || null, scheduled_at, 'scheduled', 'consultation']);
+  db.run('UPDATE appointment_waitlist SET status = ? WHERE id = ?', ['converted', req.params.id]);
+  saveDb();
+  res.json({ message: 'Converted to appointment' });
+});
+
+// ── Patient Education ───────────────────────────────────────────────────────
+
+app.get('/api/education', authenticate, (req, res) => {
+  const { category, published } = req.query;
+  let sql = 'SELECT a.*, u.name as author_name FROM education_articles a LEFT JOIN users u ON a.author_id = u.id WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND a.category = ?'; params.push(category); }
+  if (published !== undefined) { sql += ' AND a.is_published = ?'; params.push(published === 'true' ? 1 : 0); }
+  sql += ' ORDER BY a.created_at DESC';
+  res.json({ data: getAll(sql, params) });
+});
+
+app.get('/api/education/:id', authenticate, (req, res) => {
+  const article = getOne('SELECT a.*, u.name as author_name FROM education_articles a LEFT JOIN users u ON a.author_id = u.id WHERE a.id = ?', [req.params.id]);
+  if (!article) return res.status(404).json({ message: 'Not found' });
+  db.run('UPDATE education_articles SET views = views + 1 WHERE id = ?', [req.params.id]);
+  res.json({ data: article });
+});
+
+app.post('/api/education', authenticate, (req, res) => {
+  const { title, content, category, tags, is_published } = req.body;
+  const r = db.run('INSERT INTO education_articles (title, content, category, tags, author_id, is_published) VALUES (?,?,?,?,?,?)',
+    [title, content || null, category || 'general', tags || null, req.user.id, is_published ? 1 : 0]);
+  saveDb();
+  res.json({ data: { id: r.lastInsertRowid ?? db.exec("SELECT last_insert_rowid()")[0]?.values[0][0] } });
+});
+
+app.put('/api/education/:id', authenticate, (req, res) => {
+  const { title, content, category, tags, is_published } = req.body;
+  db.run('UPDATE education_articles SET title=?, content=?, category=?, tags=?, is_published=?, updated_at=datetime(\'now\') WHERE id=?',
+    [title, content || null, category || 'general', tags || null, is_published ? 1 : 0, req.params.id]);
+  saveDb();
+  res.json({ message: 'Updated' });
+});
+
+app.delete('/api/education/:id', authenticate, (req, res) => {
+  db.run('DELETE FROM education_articles WHERE id = ?', [req.params.id]);
+  saveDb();
+  res.json({ message: 'Deleted' });
+});
+
+app.get('/api/education/categories/list', authenticate, (_req, res) => {
+  const rows = getAll('SELECT DISTINCT category FROM education_articles ORDER BY category');
+  res.json({ data: rows.map(r => r.category) });
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────

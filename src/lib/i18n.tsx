@@ -40,6 +40,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.shifts": "Shifts",
     "nav.suppliers": "Suppliers",
     "nav.tv_dashboard": "TV Mode",
+    "nav.services": "Services",
+    "nav.waitlist": "Waitlist",
+    "nav.education": "Education",
     "nav.logout": "Log out",
 
     "dashboard.greeting_morning": "Good morning",
@@ -155,6 +158,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.shifts": "Équipes",
     "nav.suppliers": "Fournisseurs",
     "nav.tv_dashboard": "Mode TV",
+    "nav.services": "Services",
+    "nav.waitlist": "Liste d'attente",
+    "nav.education": "Éducation",
     "nav.logout": "Déconnexion",
 
     "dashboard.greeting_morning": "Bonjour",
@@ -270,6 +276,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.shifts": "الورديات",
     "nav.suppliers": "الموردون",
     "nav.tv_dashboard": "وضع التلفاز",
+    "nav.services": "الخدمات",
+    "nav.waitlist": "قائمة الانتظار",
+    "nav.education": "التثقيف الصحي",
     "nav.logout": "تسجيل الخروج",
 
     "dashboard.greeting_morning": "صباح الخير",

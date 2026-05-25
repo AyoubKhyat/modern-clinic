@@ -44,6 +44,9 @@ import {
   Clock,
   Truck,
   Tv,
+  ShoppingCart,
+  ListOrdered,
+  GraduationCap,
 } from "lucide-react"
 import { useAuthStore } from "@/stores/auth-store"
 import type { UserRole } from "@/types"
@@ -104,6 +107,9 @@ const navItems: NavItem[] = [
   { labelKey: "nav.shifts", label: "Shifts", href: "/shifts", icon: Clock, roles: ["admin"] },
   { labelKey: "nav.suppliers", label: "Suppliers", href: "/suppliers", icon: Truck, roles: ["admin"] },
   { labelKey: "nav.tv_dashboard", label: "TV Mode", href: "/tv-dashboard", icon: Tv, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.services", label: "Services", href: "/services", icon: ShoppingCart, roles: ["admin"] },
+  { labelKey: "nav.waitlist", label: "Waitlist", href: "/waitlist", icon: ListOrdered, roles: ["admin", "receptionist"] },
+  { labelKey: "nav.education", label: "Education", href: "/education", icon: GraduationCap, roles: ["admin", "doctor"] },
   { labelKey: "nav.audit_log", label: "Audit Log", href: "/audit-log", icon: ClipboardList, roles: ["admin"] },
   { labelKey: "nav.settings", label: "Settings", href: "/settings", icon: Settings, roles: ["admin"] },
 ]
