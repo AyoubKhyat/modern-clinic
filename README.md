@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Modern Clinic OS
 
-## Getting Started
+A full-featured clinic management system — patient records, appointments, inventory, payroll, analytics, and an AI assistant — built with Next.js 16 and a containerized Express + SQLite backend.
 
-First, run the development server:
+Reference implementation of a modern medical practice admin panel. Designed as a portfolio piece and a starting point for real clinic deployments.
+
+## What it does
+
+- **Patients** — create, search, edit patient records with full history
+- **Appointments** — calendar view, quick scheduling, status tracking
+- **Inventory** — stock levels, supplies, low-stock alerts
+- **Payroll** — staff pay tracking
+- **Analytics** — dashboard with clinic KPIs and charts
+- **AI assistant** — in-app helper for admin queries
+- **Command palette** — keyboard-first navigation (⌘K)
+- **Onboarding flow** — guided setup for new deployments
+- **Role-based auth** — doctor, staff, admin roles with JWT
+
+## Tech stack
+
+**Frontend** — Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui (Base UI) · Framer Motion · Recharts · Zustand · Axios
+
+**Backend** — Node.js · Express · SQLite (via `sql.js` WASM) · JWT auth · bcryptjs
+
+**Deployment** — Docker Compose (frontend + backend + persistent volume)
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://localhost:3000 — backend runs on http://localhost:8000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Local dev without Docker
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# terminal 1 — backend
+cd backend && npm install && npm start
 
-## Learn More
+# terminal 2 — frontend
+npm install && npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Environment variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Copy `.env.example` to `.env` and set:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `JWT_SECRET` — 32+ char random string for token signing
+- `NEXT_PUBLIC_API_URL` — backend URL (default `http://localhost:8000/api`)
+- `DB_PATH` — SQLite file location (default `./data/clinic.db`)
+- `CORS_ORIGIN` — allowed frontend origin
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+modern-clinic/
+├── src/
+│   ├── app/
+│   │   ├── (auth)/          # sign-in flow
+│   │   ├── (dashboard)/     # main app pages
+│   │   └── portal/          # patient portal
+│   ├── components/
+│   │   ├── ai-assistant/
+│   │   ├── analytics/
+│   │   ├── appointments/
+│   │   ├── command-palette/
+│   │   ├── dashboard/
+│   │   ├── inventory/
+│   │   ├── onboarding/
+│   │   ├── patients/
+│   │   ├── payroll/
+│   │   └── ui/
+│   ├── hooks/
+│   ├── lib/
+│   ├── stores/              # zustand state
+│   └── types/
+├── backend/
+│   ├── server.js            # Express + sql.js
+│   └── Dockerfile
+├── docker-compose.yml
+└── Dockerfile               # frontend
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## About
+
+Built by [Ayoub Khyat](https://github.com/AyoubKhyat) — full-stack developer, Marrakech.
+
+Available for freelance work — custom dashboards, admin panels, and AI integrations — at [Ibda3 Digital](https://ibda3-digital.vercel.app/) and on [Fiverr](https://www.fiverr.com/ayoubkhyat).
